@@ -33,6 +33,14 @@ type UpdateOpts = {
 export class RemisionesCompraService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private normalizeText(value?: string | null) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
   private assertBodegaAccess(idBodega: number, bodegasPermitidas?: number[]) {
     if (!idBodega || Number.isNaN(idBodega)) {
       throw new BadRequestException('Bodega activa inválida');
@@ -60,6 +68,36 @@ export class RemisionesCompraService {
     const nextNum = lastNum + 1;
 
     return `${prefix}-${String(nextNum).padStart(pad, '0')}`;
+  }
+
+  /**
+   * Busca un estado de remisión por posibles nombres reales en BD.
+   * Así no dependemos de que "Pendiente" o "Confirmada" sea un id fijo.
+   */
+  private async obtenerEstadoRemisionPorNombres(
+    tx: Prisma.TransactionClient,
+    posiblesNombres: string[],
+  ) {
+    const estados = await tx.estado_remision_compra.findMany({
+      select: {
+        id_estado_remision_compra: true,
+        nombre_estado: true,
+      },
+    });
+
+    const encontrado = estados.find((estado) =>
+      posiblesNombres.includes(this.normalizeText(estado.nombre_estado)),
+    );
+
+    if (!encontrado) {
+      throw new BadRequestException(
+        `No existe en BD un estado de remisión con alguno de estos nombres: ${posiblesNombres.join(
+          ', ',
+        )}`,
+      );
+    }
+
+    return encontrado;
   }
 
   private async validarCompraYAcceso(
@@ -129,12 +167,17 @@ export class RemisionesCompraService {
   ) {
     const estado = await tx.estado_remision_compra.findUnique({
       where: { id_estado_remision_compra: idEstado },
-      select: { id_estado_remision_compra: true },
+      select: {
+        id_estado_remision_compra: true,
+        nombre_estado: true,
+      },
     });
 
     if (!estado) {
       throw new BadRequestException(`Estado de remisión inválido: ${idEstado}`);
     }
+
+    return estado;
   }
 
   private async validarProductosEIvas(
@@ -306,8 +349,6 @@ export class RemisionesCompraService {
       );
     }
 
-    const ESTADO_INICIAL = 1;
-
     return this.prisma.$transaction(async (tx) => {
       const compra = await this.validarCompraYAcceso(
         tx,
@@ -316,8 +357,11 @@ export class RemisionesCompraService {
         opts.bodegasPermitidas,
       );
 
+      const estadoInicial = await this.obtenerEstadoRemisionPorNombres(tx, [
+        'pendiente',
+      ]);
+
       await this.validarProveedor(tx, dto.id_proveedor);
-      await this.validarEstadoRemision(tx, ESTADO_INICIAL);
       await this.validarProductosEIvas(tx, dto.detalle_remision_compra);
 
       this.validarCantidadesYPrecios(dto.detalle_remision_compra);
@@ -354,7 +398,7 @@ export class RemisionesCompraService {
           id_compra: dto.id_compra,
           id_proveedor: dto.id_proveedor,
           id_bodega: dto.id_bodega,
-          id_estado_remision_compra: ESTADO_INICIAL,
+          id_estado_remision_compra: estadoInicial.id_estado_remision_compra,
           id_usuario_creador: opts.idUsuario,
           id_factura: dto.id_factura ?? null,
           afecta_existencias: false,
@@ -510,34 +554,45 @@ export class RemisionesCompraService {
     dto: CambiarEstadoRemisionCompraDto,
     opts: UpdateOpts,
   ) {
-    // 1. Obtenemos la remisión actual (esto ya valida si existe y si hay acceso)
     const actual = await this.findOne(id, {
       bodegasPermitidas: opts.bodegasPermitidas,
     });
 
     return this.prisma.$transaction(async (tx) => {
-      // 2. Validamos el nuevo estado que viene en el DTO
-      await this.validarEstadoRemision(tx, dto.id_estado_remision_compra);
+      const estadoDestino = await this.validarEstadoRemision(
+        tx,
+        dto.id_estado_remision_compra,
+      );
 
-      const ESTADO_RECIBIDA = 2;
+      const nombreEstadoDestino = this.normalizeText(
+        estadoDestino.nombre_estado,
+      );
 
-      // 3. Usamos 'actual' para las validaciones de negocio
-      if (
-        dto.id_estado_remision_compra === ESTADO_RECIBIDA &&
-        actual.afecta_existencias
-      ) {
+      const estadosQueAplicanExistencias = [
+        'recibida',
+        'recibido',
+        'aprobada',
+        'aprobado',
+        'confirmada',
+        'confirmado',
+      ];
+
+      const aplicaExistenciasConEsteEstado =
+        estadosQueAplicanExistencias.includes(nombreEstadoDestino);
+
+      if (aplicaExistenciasConEsteEstado && actual.afecta_existencias) {
         throw new BadRequestException(
           'La remisión ya aplicó existencias anteriormente',
         );
       }
 
-      // 4. Lógica para aplicar existencias si el estado es RECIBIDA
-      if (
-        dto.id_estado_remision_compra === ESTADO_RECIBIDA &&
-        !actual.afecta_existencias
-      ) {
-        // Le pasamos 'actual' directamente a la función de existencias
-        // Nota: Asegúrate de que 'actual' tenga el detalle incluido (lo hace si usas remisionCompraDetailSelect)
+      if (aplicaExistenciasConEsteEstado && !actual.afecta_existencias) {
+        if (!actual.detalle_remision_compra?.length) {
+          throw new BadRequestException(
+            'La remisión no tiene detalle para aplicar existencias',
+          );
+        }
+
         await this.aplicarExistenciasDesdeRemision(tx, {
           id_remision_compra: actual.id_remision_compra,
           id_bodega: actual.id_bodega,
@@ -562,7 +617,6 @@ export class RemisionesCompraService {
         });
       }
 
-      // 5. Cambio de estado simple si no es RECIBIDA o ya se aplicó
       return tx.remision_compra.update({
         where: { id_remision_compra: id },
         data: {
