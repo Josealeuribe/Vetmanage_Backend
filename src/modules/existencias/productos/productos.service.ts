@@ -21,16 +21,16 @@ export type ProductoWithRefs = Prisma.productoGetPayload<{
 export type ProductosFindAllResponse =
   | ProductoPayload[]
   | {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-    data: (ProductoPayload | ProductoWithRefs)[];
-  };
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+      data: (ProductoPayload | ProductoWithRefs)[];
+    };
 
 @Injectable()
 export class ProductosService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private async assertCategoriaExists(id_categoria_producto: number) {
     const exists = await this.prisma.categoria_producto.findUnique({
@@ -52,48 +52,12 @@ export class ProductosService {
     if (!exists) {
       throw new BadRequestException('id_iva no existe');
     }
-<<<<<<< HEAD
-  }
-
-  private generarCodigoProducto(id: number) {
-    return `PROD-${String(id).padStart(4, '0')}`;
-=======
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
   }
 
   async create(dto: CreateProductoDto): Promise<ProductoPayload> {
     await this.assertCategoriaExists(dto.id_categoria_producto);
     await this.assertIvaExists(dto.id_iva);
 
-<<<<<<< HEAD
-    const codigo_barras = dto.codigo_barras?.trim() || null;
-
-    return this.prisma.$transaction(async (tx) => {
-      const creado = await tx.producto.create({
-        data: {
-          codigo_producto: null,
-          nombre_producto: dto.nombre_producto.trim(),
-          descripcion: dto.descripcion?.trim() || null,
-          codigo_barras,
-          id_categoria_producto: dto.id_categoria_producto,
-          id_iva: dto.id_iva,
-          estado: dto.estado ?? true,
-        },
-        select: {
-          id_producto: true,
-        },
-      });
-
-      const codigoGenerado = this.generarCodigoProducto(creado.id_producto);
-
-      return tx.producto.update({
-        where: { id_producto: creado.id_producto },
-        data: {
-          codigo_producto: codigoGenerado,
-        },
-        select: productoSelect,
-      });
-=======
     return this.prisma.producto.create({
       data: {
         nombre_producto: dto.nombre_producto.trim(),
@@ -103,7 +67,6 @@ export class ProductosService {
         estado: dto.estado ?? true,
       },
       select: productoSelect,
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
     });
   }
 
@@ -199,14 +162,10 @@ export class ProductosService {
         include: { categoria_producto: true, iva: true },
       });
 
-<<<<<<< HEAD
-      if (!prod) throw new NotFoundException('Producto no encontrado');
-=======
       if (!prod) {
         throw new NotFoundException('Producto no encontrado');
       }
 
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
       return prod;
     }
 
@@ -215,14 +174,10 @@ export class ProductosService {
       select: productoSelect,
     });
 
-<<<<<<< HEAD
-    if (!prod) throw new NotFoundException('Producto no encontrado');
-=======
     if (!prod) {
       throw new NotFoundException('Producto no encontrado');
     }
 
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
     return prod;
   }
 
@@ -231,17 +186,11 @@ export class ProductosService {
       where: { id_producto: id },
       select: { id_producto: true },
     });
-<<<<<<< HEAD
-
-    if (!exists) throw new NotFoundException('Producto no encontrado');
-
-=======
 
     if (!exists) {
       throw new NotFoundException('Producto no encontrado');
     }
 
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
     if (dto.id_categoria_producto !== undefined) {
       await this.assertCategoriaExists(dto.id_categoria_producto);
     }

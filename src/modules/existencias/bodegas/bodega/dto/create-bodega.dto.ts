@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsInt,
@@ -17,19 +16,12 @@ export class CreateBodegaDto {
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(200)
+  @MaxLength(255)
   direccion: string;
 
-  @IsOptional()
-  @Type(() => Number)
   @IsInt()
   @Min(1)
-  id_municipio?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  municipio?: string;
+  id_municipio: number;
 
   @IsOptional()
   @IsBoolean()

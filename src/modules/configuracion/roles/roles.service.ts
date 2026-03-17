@@ -7,7 +7,6 @@ import { Prisma, roles } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateRolDto } from './dto/create-rol.dto';
 import { UpdateRolDto } from './dto/update-rol.dto';
-import { AsignarPermisosRolDto } from './dto/asignar-permisos-rol.dto';
 
 type PrismaKnownError = { code: string; meta?: unknown };
 
@@ -43,11 +42,7 @@ function isUniqueConstraintError(e: unknown, field?: string): boolean {
     : target.includes(field);
 }
 
-<<<<<<< HEAD
-const rolDetailSelect = Prisma.validator<Prisma.rolesSelect>()({
-=======
 const rolSelect = {
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
   id_rol: true,
   nombre_rol: true,
   descripcion: true,
@@ -59,10 +54,6 @@ const rolSelect = {
   },
   roles_permisos: {
     select: {
-<<<<<<< HEAD
-      id_permiso: true,
-=======
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
       permisos: {
         select: {
           id_permiso: true,
@@ -70,24 +61,12 @@ const rolSelect = {
         },
       },
     },
-<<<<<<< HEAD
-    orderBy: {
-      id_permiso: 'asc',
-    },
-  },
-});
-
-type RolDetail = Prisma.rolesGetPayload<{
-  select: typeof rolDetailSelect;
-}>;
-=======
   },
 } satisfies Prisma.rolesSelect;
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
 
 @Injectable()
 export class RolesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private async validarPermisos(idsPermisos: number[]) {
     if (!idsPermisos?.length) return;
@@ -113,56 +92,28 @@ export class RolesService {
 
     await this.validarPermisos(idsPermisos);
 
-<<<<<<< HEAD
-  async create(dto: CreateRolDto): Promise<RolDetail> {
-    const idsPermisos = this.normalizeIds(dto.ids_permisos);
-
-    await this.ensurePermisosExist(idsPermisos);
-
-    try {
-      const nuevoRol = await this.prisma.$transaction(async (tx) => {
-=======
     try {
       return await this.prisma.$transaction(async (tx) => {
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
         const rol = await tx.roles.create({
           data: {
             nombre_rol: dto.nombre_rol.trim(),
             descripcion: dto.descripcion.trim(),
             estado: dto.estado ?? true,
-<<<<<<< HEAD
-          },
-        });
-
-        if (idsPermisos.length > 0) {
-          await tx.roles_permisos.createMany({
-            data: idsPermisos.map((id_permiso) => ({
-              id_rol: rol.id_rol,
-              id_permiso,
-            })),
-            skipDuplicates: true,
-          });
-        }
-
-=======
             ...(idsPermisos.length
               ? {
-                roles_permisos: {
-                  create: idsPermisos.map((id_permiso) => ({
-                    id_permiso,
-                  })),
-                },
-              }
+                  roles_permisos: {
+                    create: idsPermisos.map((id_permiso) => ({
+                      id_permiso,
+                    })),
+                  },
+                }
               : {}),
           },
           select: rolSelect,
         });
 
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
         return rol;
       });
-
-      return this.findOne(nuevoRol.id_rol);
     } catch (e: unknown) {
       if (isUniqueConstraintError(e, 'nombre_rol')) {
         throw new BadRequestException('Ya existe un rol con ese nombre');
@@ -171,26 +122,12 @@ export class RolesService {
     }
   }
 
-<<<<<<< HEAD
-  async findAll(params?: { incluirInactivos?: boolean }): Promise<RolDetail[]> {
-=======
   async findAll(params?: { incluirInactivos?: boolean }) {
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
     const incluirInactivos = params?.incluirInactivos ?? false;
 
     return this.prisma.roles.findMany({
       where: incluirInactivos ? {} : { estado: true },
       orderBy: { id_rol: 'asc' },
-<<<<<<< HEAD
-      select: rolDetailSelect,
-    });
-  }
-
-  async findOne(id_rol: number): Promise<RolDetail> {
-    const rol = await this.prisma.roles.findUnique({
-      where: { id_rol },
-      select: rolDetailSelect,
-=======
       select: rolSelect,
     });
   }
@@ -199,7 +136,6 @@ export class RolesService {
     const rol = await this.prisma.roles.findUnique({
       where: { id_rol },
       select: rolSelect,
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
     });
 
     if (!rol) {
@@ -209,26 +145,8 @@ export class RolesService {
     return rol;
   }
 
-<<<<<<< HEAD
-  async update(id_rol: number, dto: UpdateRolDto): Promise<RolDetail> {
-    await this.ensureExists(id_rol);
-
-    if (dto.estado === false) {
-      await this.ensureNoUsersAssigned(id_rol);
-    }
-
-    const idsPermisos =
-      dto.ids_permisos !== undefined
-        ? this.normalizeIds(dto.ids_permisos)
-        : undefined;
-
-    if (idsPermisos !== undefined) {
-      await this.ensurePermisosExist(idsPermisos);
-    }
-=======
   async asignarPermisos(id_rol: number, idsPermisos: number[]) {
     await this.findOne(id_rol);
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
 
     const idsUnicos = [...new Set(idsPermisos)];
     await this.validarPermisos(idsUnicos);
@@ -294,26 +212,13 @@ export class RolesService {
     }
 
     try {
-<<<<<<< HEAD
-      await this.prisma.$transaction(async (tx) => {
-        await tx.roles.update({
-          where: { id_rol },
-          data,
-        });
-
-=======
       return await this.prisma.$transaction(async (tx) => {
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
         if (idsPermisos !== undefined) {
           await tx.roles_permisos.deleteMany({
             where: { id_rol },
           });
 
-<<<<<<< HEAD
-          if (idsPermisos.length > 0) {
-=======
           if (idsPermisos.length) {
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
             await tx.roles_permisos.createMany({
               data: idsPermisos.map((id_permiso) => ({
                 id_rol,
@@ -323,15 +228,12 @@ export class RolesService {
             });
           }
         }
-<<<<<<< HEAD
-=======
 
         return tx.roles.update({
           where: { id_rol },
           data,
           select: rolSelect,
         });
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
       });
 
       return this.findOne(id_rol);
@@ -343,42 +245,6 @@ export class RolesService {
     }
   }
 
-<<<<<<< HEAD
-  async asignarPermisos(
-    id_rol: number,
-    dto: AsignarPermisosRolDto,
-  ): Promise<RolDetail> {
-    await this.ensureExists(id_rol);
-
-    const idsPermisos = this.normalizeIds(dto.ids_permisos);
-
-    await this.ensurePermisosExist(idsPermisos);
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.roles_permisos.deleteMany({
-        where: { id_rol },
-      });
-
-      if (idsPermisos.length > 0) {
-        await tx.roles_permisos.createMany({
-          data: idsPermisos.map((id_permiso) => ({
-            id_rol,
-            id_permiso,
-          })),
-          skipDuplicates: true,
-        });
-      }
-    });
-
-    return this.findOne(id_rol);
-  }
-
-  async remove(id_rol: number): Promise<RolDetail> {
-    await this.ensureExists(id_rol);
-    await this.ensureNoUsersAssigned(id_rol);
-
-    await this.prisma.roles.update({
-=======
   async remove(id_rol: number): Promise<roles> {
     await this.findOne(id_rol);
 
@@ -393,7 +259,6 @@ export class RolesService {
     }
 
     return this.prisma.roles.delete({
->>>>>>> 1d97f8d42da8fa688f1e06bedcb6a1393c7aff1a
       where: { id_rol },
     });
 
