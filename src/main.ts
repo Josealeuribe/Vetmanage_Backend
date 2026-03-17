@@ -10,11 +10,9 @@ async function bootstrap() {
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
   const logger = new Logger('Bootstrap');
 
-  // 1. Prefijo y Filtros (Seguridad y Orden)
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // 2. Pipes de Validación (¡No los olvides, son vitales!)
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -24,14 +22,23 @@ async function bootstrap() {
     }),
   );
 
-  // 3. CORS (Configuración recomendada)
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
+    : [
+        'http://localhost:8081',
+        'http://localhost:3000',
+        'http://127.0.0.1:8081',
+        'http://127.0.0.1:3000',
+      ];
+
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: allowedOrigins,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 
-  const port = process.env.PORT ?? 3000;
+  const port = process.env.PORT ?? 3001;
   await app.listen(port);
 
   logger.log(`🚀 API running on: http://localhost:${port}/api`);

@@ -65,7 +65,10 @@ export class ExistenciasController {
     @Query('id_bodega') idBodegaRaw?: string,
   ) {
     const { id_bodega_activa, bodegasPermitidas } = req.user;
-    const idBodegaActiva = idBodegaRaw ? Number(idBodegaRaw) : id_bodega_activa;
+    const idBodegaActiva =
+      idBodegaRaw !== undefined
+        ? Number(idBodegaRaw)
+        : id_bodega_activa ?? undefined;
 
     return this.existenciasService.findAll({
       idBodegaActiva,
