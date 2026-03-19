@@ -50,14 +50,18 @@ export class RestablecerContrasenaService {
     });
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const enlace = `${frontendUrl}/restablecer-contrasena?token=${tokenPlano}`;
+    const frontendMobile = process.env.FRONTEND_MOBILE || 'mobile://';
+
+    const enlaceWeb = `${frontendUrl}/restablecer-contrasena?token=${encodeURIComponent(tokenPlano)}`;
+    const enlaceApp = `${frontendMobile}restablecer-contrasena?token=${encodeURIComponent(tokenPlano)}`;
 
     setImmediate(async () => {
       try {
         await this.mailService.enviarRestablecimientoContrasena({
           to: usuario.email,
           nombre: usuario.nombre,
-          enlace,
+          enlaceWeb,
+          enlaceApp,
         });
       } catch (error) {
         console.error('Error enviando correo de restablecimiento:', error);
