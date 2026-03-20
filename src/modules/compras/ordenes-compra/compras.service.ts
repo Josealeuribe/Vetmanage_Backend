@@ -346,6 +346,10 @@ export class ComprasService {
       throw new BadRequestException('No puedes editar una compra anulada');
     }
 
+    if (actual.id_estado_compra === ESTADO_APROBADA) {
+      throw new BadRequestException('No puedes editar una compra aprobada');
+    }
+
     const bodegasPermitidas = await this.getBodegasPermitidasUsuario(
       opts.idUsuario,
     );

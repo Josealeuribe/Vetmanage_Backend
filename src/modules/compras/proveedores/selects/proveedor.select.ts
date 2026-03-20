@@ -13,4 +13,11 @@ export const proveedorSelect = {
   id_tipo_doc: true,
   id_municipio: true,
   estado: true,
-} satisfies Prisma.proveedorSelect; // si falla: Prisma.ProveedorSelect
+
+  tipo_documento: {
+    select: {
+      id_tipo_doc: true,
+      nombre_doc: true,
+    },
+  },
+} satisfies Prisma.proveedorSelect;

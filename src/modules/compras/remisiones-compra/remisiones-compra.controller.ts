@@ -6,7 +6,6 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-  Put,
   Query,
   UnauthorizedException,
   UseGuards,
@@ -14,15 +13,12 @@ import {
   ExecutionContext,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Request } from 'express'; // Necesario para tipar el objeto de la petición
+import { Request } from 'express';
 import { RemisionesCompraService } from './remisiones-compra.service';
 import { CreateRemisionCompraDto } from './dto/create-remision-compra.dto';
 import { UpdateRemisionCompraDto } from './dto/update-remision-compra.dto';
 import { CambiarEstadoRemisionCompraDto } from './dto/estado-remision-compra.dto';
 
-// --- 1. INTERFACES ESTRICTAS ---
-
-/** Lo que viene dentro del objeto Request (inyectado por Passport o tu JWT Strategy) */
 export interface AuthUserPayload {
   idUsuario?: number | string;
   id_usuario?: number | string;
@@ -34,23 +30,18 @@ export interface AuthUserPayload {
   bodegas_permitidas?: (number | string)[];
 }
 
-/** Estructura final limpia que usará tu controlador y servicios */
 export interface AuthData {
   idUsuario: number;
   idBodegaActiva: number | null;
   bodegasPermitidas: number[];
 }
 
-/** Tipado para extender el Request de Express y evitar el 'any' en req.user */
 interface RequestWithUser extends Request {
   user: AuthUserPayload;
 }
 
-// --- 2. DECORADOR SIN 'ANY' ---
-
 export const GetAuthData = createParamDecorator(
-  (data: unknown, ctx: ExecutionContext): AuthData => {
-    // Tipamos el Request para que TS sepa que .user existe y tiene forma de AuthUserPayload
+  (_data: unknown, ctx: ExecutionContext): AuthData => {
     const request = ctx.switchToHttp().getRequest<RequestWithUser>();
     const user = request.user;
 
@@ -58,7 +49,6 @@ export const GetAuthData = createParamDecorator(
       throw new UnauthorizedException('Usuario no autenticado');
     }
 
-    // Extraemos con fallback para cubrir todos tus casos de nombres de variables
     const rawIdUsuario = user.idUsuario ?? user.id_usuario ?? user.sub ?? null;
     const rawIdBodega =
       user.idBodegaActiva ?? user.id_bodega_activa ?? user.id_bodega ?? null;
@@ -78,8 +68,6 @@ export const GetAuthData = createParamDecorator(
   },
 );
 
-// --- 3. CONTROLADOR 100% TIPADO ---
-
 @UseGuards(AuthGuard('jwt'))
 @Controller('remisiones-compra')
 export class RemisionesCompraController {
@@ -87,9 +75,7 @@ export class RemisionesCompraController {
 
   @Post()
   create(@Body() dto: CreateRemisionCompraDto, @GetAuthData() auth: AuthData) {
-    if (!auth.idBodegaActiva) {
-      throw new UnauthorizedException('No se encontró la bodega activa');
-    }
+    console.log('AUTH DATA remisiones-compra create =>', auth);
 
     return this.service.create(dto, {
       idUsuario: auth.idUsuario,
@@ -99,15 +85,19 @@ export class RemisionesCompraController {
   }
 
   @Get()
-  findAll(@GetAuthData() auth: AuthData, @Query('idCompra') idCompra?: string) {
-    if (!auth.idBodegaActiva) {
-      throw new UnauthorizedException('No se encontró la bodega activa');
-    }
+  findAll(
+    @GetAuthData() auth: AuthData,
+    @Query('idCompra') idCompra?: string,
+    @Query('idBodega') idBodega?: string,
+  ) {
+    console.log('AUTH DATA remisiones-compra findAll =>', auth);
 
     return this.service.findAll({
+      idUsuario: auth.idUsuario,
       idBodegaActiva: auth.idBodegaActiva,
       bodegasPermitidas: auth.bodegasPermitidas,
       idCompra: idCompra ? Number(idCompra) : undefined,
+      idBodega: idBodega ? Number(idBodega) : undefined,
     });
   }
 
@@ -116,17 +106,22 @@ export class RemisionesCompraController {
     @Param('id', ParseIntPipe) id: number,
     @GetAuthData() auth: AuthData,
   ) {
+    console.log('AUTH DATA remisiones-compra findOne =>', auth);
+
     return this.service.findOne(id, {
+      idUsuario: auth.idUsuario,
       bodegasPermitidas: auth.bodegasPermitidas,
     });
   }
 
-  @Put(':id')
+  @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateRemisionCompraDto,
     @GetAuthData() auth: AuthData,
   ) {
+    console.log('AUTH DATA remisiones-compra update =>', auth);
+
     return this.service.update(id, dto, {
       idUsuario: auth.idUsuario,
       bodegasPermitidas: auth.bodegasPermitidas,
@@ -139,6 +134,8 @@ export class RemisionesCompraController {
     @Body() dto: CambiarEstadoRemisionCompraDto,
     @GetAuthData() auth: AuthData,
   ) {
+    console.log('AUTH DATA remisiones-compra cambiarEstado =>', auth);
+
     return this.service.cambiarEstado(id, dto, {
       idUsuario: auth.idUsuario,
       bodegasPermitidas: auth.bodegasPermitidas,

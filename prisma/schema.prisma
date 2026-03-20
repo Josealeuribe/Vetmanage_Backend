@@ -12,7 +12,7 @@ model bodega {
   direccion                                   String                @db.VarChar(255)
   id_municipio                                Int                   @db.UnsignedInt
   estado                                      Boolean               @default(true)
-  municipios                                  municipios            @relation(fields: [id_municipio], references: [id_municipio], map: "fk_bodega_municipio")
+  municipios                                  municipios            @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_bodega_municipio")
   bodegas_por_usuario                         bodegas_por_usuario[]
   compras                                     compras[]
   cotizacion                                  cotizacion[]
@@ -29,12 +29,12 @@ model bodegas_por_usuario {
   id_usuario Int     @db.UnsignedInt
   id_bodega  Int     @db.UnsignedInt
   estado     Boolean @default(true)
-  bodega     bodega  @relation(fields: [id_bodega], references: [id_bodega], map: "fk_bpu_bodega")
-  usuario    usuario @relation(fields: [id_usuario], references: [id_usuario], map: "fk_bpu_usuario")
+  bodega     bodega  @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_bpu_bodega")
+  usuario    usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, map: "fk_bpu_usuario")
 
-    @@id([id_usuario, id_bodega])
-    @@index([id_bodega], map: "fk_bpu_bodega")
-  }
+  @@id([id_usuario, id_bodega])
+  @@index([id_bodega], map: "fk_bpu_bodega")
+}
 
 model categoria_producto {
   id_categoria_producto Int        @id @default(autoincrement()) @db.UnsignedInt
@@ -54,9 +54,9 @@ model cliente {
   id_municipio    Int              @db.UnsignedInt
   id_tipo_doc     Int              @db.UnsignedInt
   estado          Boolean          @default(true)
-  municipios      municipios       @relation(fields: [id_municipio], references: [id_municipio], map: "fk_cliente_municipio")
-  tipo_cliente    tipo_cliente     @relation(fields: [id_tipo_cliente], references: [id_tipo_cliente], map: "fk_cliente_tipo_cliente")
-  tipo_documento  tipo_documento   @relation(fields: [id_tipo_doc], references: [id_tipo_doc], map: "fk_cliente_tipo_doc")
+  municipios      municipios       @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_cliente_municipio")
+  tipo_cliente    tipo_cliente     @relation(fields: [id_tipo_cliente], references: [id_tipo_cliente], onDelete: NoAction, map: "fk_cliente_tipo_cliente")
+  tipo_documento  tipo_documento   @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_cliente_tipo_doc")
   cotizacion      cotizacion[]
   factura         factura[]
   orden_venta     orden_venta[]
@@ -74,18 +74,18 @@ model compras {
   id_proveedor       Int               @db.UnsignedInt
   id_termino_pago    Int               @db.UnsignedInt
   descripcion        String?           @db.Text
-  subtotal           Decimal           @default(0.00) @db.Decimal(10, 2)
-  total_iva          Decimal           @default(0.00) @db.Decimal(10, 2)
-  total              Decimal           @default(0.00) @db.Decimal(10, 2)
+  subtotal           Decimal           @default(0.00) @db.Decimal(14, 2)
+  total_iva          Decimal           @default(0.00) @db.Decimal(14, 2)
+  total              Decimal           @default(0.00) @db.Decimal(14, 2)
   fecha_entrega      DateTime?         @db.Date
   id_estado_compra   Int               @db.UnsignedInt
   id_usuario_creador Int               @db.UnsignedInt
   id_bodega          Int               @db.UnsignedInt
-  bodega             bodega            @relation(fields: [id_bodega], references: [id_bodega], map: "fk_compra_bodega")
-  estado_compra      estado_compra     @relation(fields: [id_estado_compra], references: [id_estado_compra], map: "fk_compra_estado")
-  proveedor          proveedor         @relation(fields: [id_proveedor], references: [id_proveedor], map: "fk_compra_proveedor")
-  termino_pago       termino_pago      @relation(fields: [id_termino_pago], references: [id_termino_pago], map: "fk_compra_termino_pago")
-  usuario            usuario           @relation(fields: [id_usuario_creador], references: [id_usuario], map: "fk_compra_usuario_creador")
+  bodega             bodega            @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_compra_bodega")
+  estado_compra      estado_compra     @relation(fields: [id_estado_compra], references: [id_estado_compra], onDelete: NoAction, map: "fk_compra_estado")
+  proveedor          proveedor         @relation(fields: [id_proveedor], references: [id_proveedor], onDelete: NoAction, map: "fk_compra_proveedor")
+  termino_pago       termino_pago      @relation(fields: [id_termino_pago], references: [id_termino_pago], onDelete: NoAction, map: "fk_compra_termino_pago")
+  usuario            usuario           @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_compra_usuario_creador")
   detalle_compra     detalle_compra[]
   remision_compra    remision_compra[]
 
@@ -107,10 +107,10 @@ model cotizacion {
   id_usuario_creador   Int                  @db.UnsignedInt
   id_estado_cotizacion Int                  @db.UnsignedInt
   observaciones        String?              @db.VarChar(255)
-  bodega               bodega               @relation(fields: [id_bodega], references: [id_bodega], map: "fk_cotizacion_bodega")
-  cliente              cliente              @relation(fields: [id_cliente], references: [id_cliente], map: "fk_cotizacion_cliente")
-  estado_cotizacion    estado_cotizacion    @relation(fields: [id_estado_cotizacion], references: [id_estado_cotizacion], map: "fk_cotizacion_estado")
-  usuario              usuario              @relation(fields: [id_usuario_creador], references: [id_usuario], map: "fk_cotizacion_usuario")
+  bodega               bodega               @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_cotizacion_bodega")
+  cliente              cliente              @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_cotizacion_cliente")
+  estado_cotizacion    estado_cotizacion    @relation(fields: [id_estado_cotizacion], references: [id_estado_cotizacion], onDelete: NoAction, map: "fk_cotizacion_estado")
+  usuario              usuario              @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_cotizacion_usuario")
   detalle_cotizacion   detalle_cotizacion[]
   orden_venta          orden_venta?
 
@@ -125,7 +125,7 @@ model departamentos {
   id_departamento     Int          @id @default(autoincrement()) @db.UnsignedInt
   nombre_departamento String       @db.VarChar(100)
   id_pais             Int          @db.UnsignedInt
-  paises              paises       @relation(fields: [id_pais], references: [id_pais], map: "fk_departamento_pais")
+  paises              paises       @relation(fields: [id_pais], references: [id_pais], onDelete: NoAction, map: "fk_departamento_pais")
   municipios          municipios[]
 
   @@unique([id_pais, nombre_departamento], map: "uq_departamento_pais")
@@ -139,8 +139,8 @@ model detalle_compra {
   precio_unitario Decimal  @db.Decimal(10, 2)
   id_iva          Int      @db.UnsignedInt
   compras         compras  @relation(fields: [id_compra], references: [id_compra], onDelete: Cascade, map: "fk_dc_compra")
-  iva             iva      @relation(fields: [id_iva], references: [id_iva], map: "fk_dc_iva")
-  producto        producto @relation(fields: [id_producto], references: [id_producto], map: "fk_dc_producto")
+  iva             iva      @relation(fields: [id_iva], references: [id_iva], onDelete: NoAction, map: "fk_dc_iva")
+  producto        producto @relation(fields: [id_producto], references: [id_producto], onDelete: NoAction, map: "fk_dc_producto")
 
   @@id([id_compra, id_producto])
   @@index([id_iva], map: "fk_dc_iva")
@@ -157,8 +157,8 @@ model detalle_cotizacion {
   id_iva                Int?       @db.UnsignedInt
   iva_porcentaje        Decimal?   @db.Decimal(5, 2)
   cotizacion            cotizacion @relation(fields: [id_cotizacion], references: [id_cotizacion], onDelete: Cascade, map: "fk_det_cotizacion_cotizacion")
-  iva                   iva?       @relation(fields: [id_iva], references: [id_iva], onDelete: Restrict, map: "fk_det_cotizacion_iva")
-  producto              producto   @relation(fields: [id_producto], references: [id_producto], map: "fk_det_cotizacion_producto")
+  iva                   iva?       @relation(fields: [id_iva], references: [id_iva], onDelete: NoAction, map: "fk_det_cotizacion_iva")
+  producto              producto   @relation(fields: [id_producto], references: [id_producto], onDelete: NoAction, map: "fk_det_cotizacion_producto")
 
   @@unique([id_cotizacion, id_producto], map: "uq_cot_prod")
   @@index([id_iva], map: "fk_det_cotizacion_iva")
@@ -174,7 +174,7 @@ model detalle_orden_venta {
   cantidad               Decimal     @db.Decimal(10, 2)
   precio_unitario        Decimal     @db.Decimal(10, 2)
   orden_venta            orden_venta @relation(fields: [id_orden_venta], references: [id_orden_venta], onDelete: Cascade, map: "fk_dov_orden")
-  producto               producto    @relation(fields: [id_producto], references: [id_producto], map: "fk_dov_producto")
+  producto               producto    @relation(fields: [id_producto], references: [id_producto], onDelete: NoAction, map: "fk_dov_producto")
 
   @@unique([id_orden_venta, id_producto], map: "uq_dov_orden_producto")
   @@index([id_orden_venta], map: "idx_dov_orden")
@@ -193,8 +193,8 @@ model detalle_remision_compra {
   fecha_vencimiento          DateTime?       @db.Date
   nota                       String?         @db.VarChar(255)
   codigo_barras              String?         @db.VarChar(100)
-  iva                        iva             @relation(fields: [id_iva], references: [id_iva], map: "fk_drc_iva")
-  producto                   producto        @relation(fields: [id_producto], references: [id_producto], map: "fk_drc_producto")
+  iva                        iva             @relation(fields: [id_iva], references: [id_iva], onDelete: NoAction, map: "fk_drc_iva")
+  producto                   producto        @relation(fields: [id_producto], references: [id_producto], onDelete: NoAction, map: "fk_drc_producto")
   remision_compra            remision_compra @relation(fields: [id_remision_compra], references: [id_remision_compra], onDelete: Cascade, map: "fk_drc_remision")
 
   @@index([id_iva], map: "fk_drc_iva")
@@ -211,7 +211,7 @@ model detalle_remision_venta {
   cantidad                  Decimal        @db.Decimal(10, 2)
   precio_unitario           Decimal        @db.Decimal(10, 2)
   iva                       Decimal?       @db.Decimal(5, 2)
-  existencias               existencias    @relation(fields: [id_existencia], references: [id_existencia], map: "fk_drv_existencia")
+  existencias               existencias    @relation(fields: [id_existencia], references: [id_existencia], onDelete: NoAction, map: "fk_drv_existencia")
   remision_venta            remision_venta @relation(fields: [id_remision_venta], references: [id_remision_venta], onDelete: Cascade, map: "fk_drv_remision")
 
   @@index([id_existencia], map: "idx_drv_existencia")
@@ -224,7 +224,7 @@ model detalle_traslado {
   id_traslado   Int         @db.UnsignedInt
   id_existencia Int         @db.UnsignedInt
   cantidad      Decimal     @db.Decimal(10, 2)
-  existencias   existencias @relation(fields: [id_existencia], references: [id_existencia], map: "fk_detalle_existencia")
+  existencias   existencias @relation(fields: [id_existencia], references: [id_existencia], onDelete: NoAction, map: "fk_detalle_existencia")
   traslado      traslado    @relation(fields: [id_traslado], references: [id_traslado], onDelete: Cascade, map: "fk_detalle_traslado")
 
   @@unique([id_traslado, id_existencia], map: "uq_detalle_traslado_existencia")
@@ -280,14 +280,14 @@ model existencias {
   id_bodega              Int                      @db.UnsignedInt
   nota                   String?                  @db.VarChar(255)
   cantidad               Decimal                  @default(0.00) @db.Decimal(10, 2)
-  cantidad_reservada     Decimal                  @default(0) @db.Decimal(10, 2)
+  cantidad_reservada     Decimal                  @default(0.00) @db.Decimal(10, 2)
   fecha_vencimiento      DateTime?                @db.Date
   lote                   String                   @default("") @db.VarChar(50)
   codigo_barras          String?                  @db.VarChar(100)
   detalle_remision_venta detalle_remision_venta[]
   detalle_traslado       detalle_traslado[]
-  bodega                 bodega                   @relation(fields: [id_bodega], references: [id_bodega], map: "fk_existencias_bodega")
-  producto               producto                 @relation(fields: [id_producto], references: [id_producto], map: "fk_existencias_producto")
+  bodega                 bodega                   @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_existencias_bodega")
+  producto               producto                 @relation(fields: [id_producto], references: [id_producto], onDelete: NoAction, map: "fk_existencias_producto")
 
   @@unique([id_producto, id_bodega, lote, fecha_vencimiento], map: "uq_existencias")
   @@index([id_bodega], map: "fk_existencias_bodega")
@@ -302,8 +302,8 @@ model factura {
   nota              String?          @db.VarChar(255)
   id_cliente        Int              @db.UnsignedInt
   id_estado_factura Int              @db.UnsignedInt
-  cliente           cliente          @relation(fields: [id_cliente], references: [id_cliente], map: "fk_factura_cliente")
-  estado_factura    estado_factura   @relation(fields: [id_estado_factura], references: [id_estado_factura], map: "fk_factura_estado")
+  cliente           cliente          @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_factura_cliente")
+  estado_factura    estado_factura   @relation(fields: [id_estado_factura], references: [id_estado_factura], onDelete: NoAction, map: "fk_factura_estado")
   pagos_abonos      pagos_abonos[]
   remision_venta    remision_venta[]
 
@@ -333,7 +333,7 @@ model municipios {
   id_departamento  Int           @db.UnsignedInt
   bodega           bodega[]
   cliente          cliente[]
-  departamentos    departamentos @relation(fields: [id_departamento], references: [id_departamento], map: "fk_municipio_departamento")
+  departamentos    departamentos @relation(fields: [id_departamento], references: [id_departamento], onDelete: NoAction, map: "fk_municipio_departamento")
   proveedor        proveedor[]
 
   @@unique([id_departamento, nombre_municipio], map: "uq_municipio_depto")
@@ -352,12 +352,12 @@ model orden_venta {
   id_usuario            Int                   @db.UnsignedInt
   id_cotizacion         Int?                  @unique(map: "uq_ov_cotizacion") @db.UnsignedInt
   detalle_orden_venta   detalle_orden_venta[]
-  bodega                bodega                @relation(fields: [id_bodega], references: [id_bodega], map: "fk_ov_bodega")
-  cliente               cliente               @relation(fields: [id_cliente], references: [id_cliente], map: "fk_ov_cliente")
+  bodega                bodega                @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_ov_bodega")
+  cliente               cliente               @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_ov_cliente")
   cotizacion            cotizacion?           @relation(fields: [id_cotizacion], references: [id_cotizacion], map: "fk_ov_cotizacion")
-  estado_orden_venta    estado_orden_venta    @relation(fields: [id_estado_orden_venta], references: [id_estado_orden_venta], map: "fk_ov_estado")
-  termino_pago          termino_pago          @relation(fields: [id_termino_pago], references: [id_termino_pago], map: "fk_ov_termino")
-  usuario               usuario               @relation(fields: [id_usuario], references: [id_usuario], map: "fk_ov_usuario")
+  estado_orden_venta    estado_orden_venta    @relation(fields: [id_estado_orden_venta], references: [id_estado_orden_venta], onDelete: NoAction, map: "fk_ov_estado")
+  termino_pago          termino_pago          @relation(fields: [id_termino_pago], references: [id_termino_pago], onDelete: NoAction, map: "fk_ov_termino")
+  usuario               usuario               @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, map: "fk_ov_usuario")
   remision_venta        remision_venta[]
 
   @@index([id_estado_orden_venta], map: "fk_ov_estado")
@@ -376,8 +376,8 @@ model pagos_abonos {
   valor       Decimal     @db.Decimal(10, 2)
   id_metodo   Int         @db.UnsignedInt
   id_factura  Int         @db.UnsignedInt
-  factura     factura     @relation(fields: [id_factura], references: [id_factura], map: "fk_pago_factura")
-  metodo_pago metodo_pago @relation(fields: [id_metodo], references: [id_metodo], map: "fk_pago_metodo")
+  factura     factura     @relation(fields: [id_factura], references: [id_factura], onDelete: NoAction, map: "fk_pago_factura")
+  metodo_pago metodo_pago @relation(fields: [id_metodo], references: [id_metodo], onDelete: NoAction, map: "fk_pago_metodo")
 
   @@index([id_metodo], map: "fk_pago_metodo")
   @@index([id_factura], map: "idx_pago_factura")
@@ -408,8 +408,8 @@ model producto {
   detalle_orden_venta     detalle_orden_venta[]
   detalle_remision_compra detalle_remision_compra[]
   existencias             existencias[]
-  categoria_producto      categoria_producto        @relation(fields: [id_categoria_producto], references: [id_categoria_producto], map: "fk_producto_categoria")
-  iva                     iva                       @relation(fields: [id_iva], references: [id_iva], map: "fk_producto_iva")
+  categoria_producto      categoria_producto        @relation(fields: [id_categoria_producto], references: [id_categoria_producto], onDelete: NoAction, map: "fk_producto_categoria")
+  iva                     iva                       @relation(fields: [id_iva], references: [id_iva], onDelete: NoAction, map: "fk_producto_iva")
 
   @@index([id_categoria_producto], map: "fk_producto_categoria")
   @@index([id_iva], map: "fk_producto_iva")
@@ -429,9 +429,9 @@ model proveedor {
   id_municipio      Int               @db.UnsignedInt
   estado            Boolean           @default(true)
   compras           compras[]
-  municipios        municipios        @relation(fields: [id_municipio], references: [id_municipio], map: "fk_proveedor_municipio")
-  tipo_documento    tipo_documento    @relation(fields: [id_tipo_doc], references: [id_tipo_doc], map: "fk_proveedor_tipo_doc")
-  tipo_proveedor    tipo_proveedor    @relation(fields: [id_tipo_proveedor], references: [id_tipo_proveedor], map: "fk_proveedor_tipo_proveedor")
+  municipios        municipios        @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_proveedor_municipio")
+  tipo_documento    tipo_documento    @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_proveedor_tipo_doc")
+  tipo_proveedor    tipo_proveedor    @relation(fields: [id_tipo_proveedor], references: [id_tipo_proveedor], onDelete: NoAction, map: "fk_proveedor_tipo_proveedor")
   remision_compra   remision_compra[]
 
   @@index([id_municipio], map: "fk_proveedor_municipio")
@@ -458,12 +458,12 @@ model remision_compra {
   id_usuario_aplico_existencias                                  Int?                      @db.UnsignedInt
   id_bodega                                                      Int?                      @db.UnsignedInt
   detalle_remision_compra                                        detalle_remision_compra[]
-  bodega                                                         bodega?                   @relation(fields: [id_bodega], references: [id_bodega], onDelete: Restrict, map: "fk_remision_compra_bodega")
-  compras                                                        compras                   @relation(fields: [id_compra], references: [id_compra], map: "fk_remision_compra_compra")
-  estado_remision_compra                                         estado_remision_compra    @relation(fields: [id_estado_remision_compra], references: [id_estado_remision_compra], map: "fk_remision_compra_estado")
-  proveedor                                                      proveedor                 @relation(fields: [id_proveedor], references: [id_proveedor], map: "fk_remision_compra_proveedor")
-  usuario                                                        usuario                   @relation(fields: [id_usuario_creador], references: [id_usuario], map: "fk_remision_compra_usuario")
-  usuario_remision_compra_id_usuario_aplico_existenciasTousuario usuario?                  @relation("remision_compra_id_usuario_aplico_existenciasTousuario", fields: [id_usuario_aplico_existencias], references: [id_usuario], onDelete: Restrict, map: "fk_remision_compra_usuario_aplico_existencias")
+  bodega                                                         bodega?                   @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_remision_compra_bodega")
+  compras                                                        compras                   @relation(fields: [id_compra], references: [id_compra], onDelete: NoAction, map: "fk_remision_compra_compra")
+  estado_remision_compra                                         estado_remision_compra    @relation(fields: [id_estado_remision_compra], references: [id_estado_remision_compra], onDelete: NoAction, map: "fk_remision_compra_estado")
+  proveedor                                                      proveedor                 @relation(fields: [id_proveedor], references: [id_proveedor], onDelete: NoAction, map: "fk_remision_compra_proveedor")
+  usuario                                                        usuario                   @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_remision_compra_usuario")
+  usuario_remision_compra_id_usuario_aplico_existenciasTousuario usuario?                  @relation("remision_compra_id_usuario_aplico_existenciasTousuario", fields: [id_usuario_aplico_existencias], references: [id_usuario], onDelete: NoAction, map: "fk_remision_compra_usuario_aplico_existencias")
 
   @@index([id_estado_remision_compra], map: "fk_remision_compra_estado")
   @@index([id_proveedor], map: "fk_remision_compra_proveedor")
@@ -489,11 +489,11 @@ model remision_venta {
   nombre_firmante          String?                  @db.VarChar(150)
   fecha_firma              DateTime?                @db.DateTime(0)
   detalle_remision_venta   detalle_remision_venta[]
-  cliente                  cliente                  @relation(fields: [id_cliente], references: [id_cliente], map: "fk_rv_cliente")
-  estado_remision_venta    estado_remision_venta    @relation(fields: [id_estado_remision_venta], references: [id_estado_remision_venta], map: "fk_rv_estado")
+  cliente                  cliente                  @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_rv_cliente")
+  estado_remision_venta    estado_remision_venta    @relation(fields: [id_estado_remision_venta], references: [id_estado_remision_venta], onDelete: NoAction, map: "fk_rv_estado")
   factura                  factura?                 @relation(fields: [id_factura], references: [id_factura], map: "fk_rv_factura")
-  orden_venta              orden_venta              @relation(fields: [id_orden_venta], references: [id_orden_venta], map: "fk_rv_orden")
-  usuario                  usuario                  @relation(fields: [id_usuario_creador], references: [id_usuario], map: "fk_rv_usuario")
+  orden_venta              orden_venta              @relation(fields: [id_orden_venta], references: [id_orden_venta], onDelete: NoAction, map: "fk_rv_orden")
+  usuario                  usuario                  @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_rv_usuario")
 
   @@index([id_cliente], map: "fk_rv_cliente")
   @@index([id_estado_remision_venta], map: "fk_rv_estado")
@@ -559,9 +559,9 @@ model traslado {
   id_estado_traslado                        Int                @db.UnsignedInt
   id_responsable                            Int?               @db.UnsignedInt
   detalle_traslado                          detalle_traslado[]
-  bodega_traslado_id_bodega_destinoTobodega bodega             @relation("traslado_id_bodega_destinoTobodega", fields: [id_bodega_destino], references: [id_bodega], map: "fk_traslado_destino")
-  estado_traslado                           estado_traslado    @relation(fields: [id_estado_traslado], references: [id_estado_traslado], map: "fk_traslado_estado")
-  bodega_traslado_id_bodega_origenTobodega  bodega             @relation("traslado_id_bodega_origenTobodega", fields: [id_bodega_origen], references: [id_bodega], map: "fk_traslado_origen")
+  bodega_traslado_id_bodega_destinoTobodega bodega             @relation("traslado_id_bodega_destinoTobodega", fields: [id_bodega_destino], references: [id_bodega], onDelete: NoAction, map: "fk_traslado_destino")
+  estado_traslado                           estado_traslado    @relation(fields: [id_estado_traslado], references: [id_estado_traslado], onDelete: NoAction, map: "fk_traslado_estado")
+  bodega_traslado_id_bodega_origenTobodega  bodega             @relation("traslado_id_bodega_origenTobodega", fields: [id_bodega_origen], references: [id_bodega], onDelete: NoAction, map: "fk_traslado_origen")
   usuario                                   usuario?           @relation(fields: [id_responsable], references: [id_usuario], map: "fk_traslado_responsable")
 
   @@index([id_estado_traslado], map: "fk_traslado_estado")
@@ -595,8 +595,8 @@ model usuario {
   remision_venta                                                         remision_venta[]
   traslado                                                               traslado[]
   genero                                                                 genero?                @relation(fields: [id_genero], references: [id_genero], map: "fk_usuario_genero")
-  roles                                                                  roles                  @relation(fields: [id_rol], references: [id_rol], map: "fk_usuario_rol")
-  tipo_documento                                                         tipo_documento         @relation(fields: [id_tipo_doc], references: [id_tipo_doc], map: "fk_usuario_tipo_doc")
+  roles                                                                  roles                  @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, map: "fk_usuario_rol")
+  tipo_documento                                                         tipo_documento         @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_usuario_tipo_doc")
 
   @@index([id_rol], map: "fk_usuario_rol")
   @@index([id_tipo_doc], map: "fk_usuario_tipo_doc")

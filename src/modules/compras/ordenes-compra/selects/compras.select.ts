@@ -19,6 +19,15 @@ export const compraListSelect = Prisma.validator<Prisma.comprasSelect>()({
     select: {
       id_proveedor: true,
       nombre_empresa: true,
+      id_tipo_doc: true,
+      num_documento: true,
+      telefono: true,
+      tipo_documento: {
+        select: {
+          id_tipo_doc: true,
+          nombre_doc: true,
+        },
+      },
     },
   },
 
