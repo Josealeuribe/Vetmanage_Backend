@@ -75,9 +75,28 @@ export class RemisionesCompraController {
 
   @Post()
   create(@Body() dto: CreateRemisionCompraDto, @GetAuthData() auth: AuthData) {
-    console.log('AUTH DATA remisiones-compra create =>', auth);
-
     return this.service.create(dto, {
+      idUsuario: auth.idUsuario,
+      idBodegaActiva: auth.idBodegaActiva,
+      bodegasPermitidas: auth.bodegasPermitidas,
+    });
+  }
+
+  @Get('siguiente-codigo')
+  getSiguienteCodigo(@GetAuthData() auth: AuthData) {
+    return this.service.getSiguienteCodigo({
+      idUsuario: auth.idUsuario,
+      idBodegaActiva: auth.idBodegaActiva,
+      bodegasPermitidas: auth.bodegasPermitidas,
+    });
+  }
+
+  @Get('contexto-compra/:idCompra')
+  getContextoCompra(
+    @Param('idCompra', ParseIntPipe) idCompra: number,
+    @GetAuthData() auth: AuthData,
+  ) {
+    return this.service.getContextoCompraParaRemision(idCompra, {
       idUsuario: auth.idUsuario,
       idBodegaActiva: auth.idBodegaActiva,
       bodegasPermitidas: auth.bodegasPermitidas,
@@ -89,15 +108,16 @@ export class RemisionesCompraController {
     @GetAuthData() auth: AuthData,
     @Query('idCompra') idCompra?: string,
     @Query('idBodega') idBodega?: string,
+    @Query('id_bodega') idBodegaSnake?: string,
   ) {
-    console.log('AUTH DATA remisiones-compra findAll =>', auth);
+    const rawIdBodega = idBodega ?? idBodegaSnake;
 
     return this.service.findAll({
       idUsuario: auth.idUsuario,
       idBodegaActiva: auth.idBodegaActiva,
       bodegasPermitidas: auth.bodegasPermitidas,
       idCompra: idCompra ? Number(idCompra) : undefined,
-      idBodega: idBodega ? Number(idBodega) : undefined,
+      idBodega: rawIdBodega ? Number(rawIdBodega) : undefined,
     });
   }
 
@@ -106,8 +126,6 @@ export class RemisionesCompraController {
     @Param('id', ParseIntPipe) id: number,
     @GetAuthData() auth: AuthData,
   ) {
-    console.log('AUTH DATA remisiones-compra findOne =>', auth);
-
     return this.service.findOne(id, {
       idUsuario: auth.idUsuario,
       bodegasPermitidas: auth.bodegasPermitidas,
@@ -120,8 +138,6 @@ export class RemisionesCompraController {
     @Body() dto: UpdateRemisionCompraDto,
     @GetAuthData() auth: AuthData,
   ) {
-    console.log('AUTH DATA remisiones-compra update =>', auth);
-
     return this.service.update(id, dto, {
       idUsuario: auth.idUsuario,
       bodegasPermitidas: auth.bodegasPermitidas,
@@ -134,8 +150,6 @@ export class RemisionesCompraController {
     @Body() dto: CambiarEstadoRemisionCompraDto,
     @GetAuthData() auth: AuthData,
   ) {
-    console.log('AUTH DATA remisiones-compra cambiarEstado =>', auth);
-
     return this.service.cambiarEstado(id, dto, {
       idUsuario: auth.idUsuario,
       bodegasPermitidas: auth.bodegasPermitidas,

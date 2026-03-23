@@ -38,6 +38,12 @@ type FindAllArgs = {
   idBodega?: number;
 };
 
+type CompraContextoOpts = {
+  idUsuario: number;
+  idBodegaActiva?: number | null;
+  bodegasPermitidas?: number[];
+};
+
 @Injectable()
 export class RemisionesCompraService {
   constructor(private readonly prisma: PrismaService) {}
@@ -74,13 +80,6 @@ export class RemisionesCompraService {
           .filter((n) => Number.isInteger(n) && n > 0)
       : [];
 
-    console.log('GET BODEGAS => auth/token', {
-      idUsuario,
-      idBodegaActiva,
-      bodegasPermitidas,
-      desdeToken,
-    });
-
     if (desdeToken.length > 0) {
       return [...new Set(desdeToken)];
     }
@@ -98,12 +97,6 @@ export class RemisionesCompraService {
     const desdeBd = [...new Set(rows.map((r) => Number(r.id_bodega)))].filter(
       (n) => Number.isInteger(n) && n > 0,
     );
-
-    console.log('GET BODEGAS => bd', {
-      idUsuario,
-      rows,
-      desdeBd,
-    });
 
     if (desdeBd.length > 0) {
       return desdeBd;
@@ -197,6 +190,151 @@ export class RemisionesCompraService {
     }
 
     return estado.id_estado_remision_compra;
+  }
+
+  private async getCompraContextoBase(
+    tx: Prisma.TransactionClient,
+    idCompra: number,
+    bodegasPermitidas: number[],
+  ) {
+    const compra = await tx.compras.findUnique({
+      where: { id_compra: idCompra },
+      select: {
+        id_compra: true,
+        codigo_compra: true,
+        id_bodega: true,
+        id_proveedor: true,
+        bodega: {
+          select: {
+            id_bodega: true,
+            nombre_bodega: true,
+          },
+        },
+        proveedor: {
+          select: {
+            id_proveedor: true,
+            nombre_empresa: true,
+            num_documento: true,
+            id_tipo_doc: true,
+            // Si en tu schema la relación se llama distinto, cambia "tipo_doc"
+            tipo_doc: {
+              select: {
+                nombre_tipo_doc: true,
+              },
+            },
+          },
+        },
+        detalle_compra: {
+          select: {
+            id_producto: true,
+            cantidad: true,
+            precio_unitario: true,
+            id_iva: true,
+            codigo_barras: true,
+            producto: {
+              select: {
+                id_producto: true,
+                nombre_producto: true,
+              },
+            },
+            iva: {
+              select: {
+                id_iva: true,
+                porcentaje: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!compra) {
+      throw new NotFoundException('Compra no encontrada');
+    }
+
+    this.assertBodegaAccess(compra.id_bodega, bodegasPermitidas);
+
+    return compra;
+  }
+
+  // =========================
+  // Endpoints de apoyo al front
+  // =========================
+
+  async getSiguienteCodigo(opts: CompraContextoOpts) {
+    const bodegasPermitidas = await this.getBodegasPermitidasUsuario(
+      opts.idUsuario,
+      opts.bodegasPermitidas,
+      opts.idBodegaActiva,
+    );
+
+    if (!bodegasPermitidas.length) {
+      throw new ForbiddenException('El usuario no tiene bodegas asignadas');
+    }
+
+    const numeroRemision = await this.prisma.$transaction((tx) =>
+      this.nextCodigoRemisionCompra(tx, 'RMC', 4),
+    );
+
+    return {
+      numeroRemision,
+    };
+  }
+
+  async getContextoCompraParaRemision(
+    idCompra: number,
+    opts: CompraContextoOpts,
+  ) {
+    const bodegasPermitidas = await this.getBodegasPermitidasUsuario(
+      opts.idUsuario,
+      opts.bodegasPermitidas,
+      opts.idBodegaActiva,
+    );
+
+    if (!bodegasPermitidas.length) {
+      throw new ForbiddenException('El usuario no tiene bodegas asignadas');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const compra = await this.getCompraContextoBase(
+        tx,
+        idCompra,
+        bodegasPermitidas,
+      );
+
+      const numeroRemisionSugerido = await this.nextCodigoRemisionCompra(
+        tx,
+        'RMC',
+        4,
+      );
+
+      return {
+        numeroRemisionSugerido,
+        compra: {
+          id: compra.id_compra,
+          codigo: compra.codigo_compra,
+          proveedorId: compra.id_proveedor,
+          proveedorNombre: compra.proveedor?.nombre_empresa ?? '',
+          proveedorTipoDocumento:
+            compra.proveedor?.tipo_doc?.nombre_tipo_doc ??
+            String(compra.proveedor?.id_tipo_doc ?? ''),
+          proveedorNumeroDocumento: compra.proveedor?.num_documento ?? '',
+          idBodega: compra.id_bodega,
+          bodegaNombre: compra.bodega?.nombre_bodega ?? '',
+          items: compra.detalle_compra.map((item) => ({
+            idProducto: item.id_producto,
+            productoNombre:
+              item.producto?.nombre_producto ??
+              `Producto ${item.id_producto}`,
+            cantidad: Number(item.cantidad),
+            precioUnitario: Number(item.precio_unitario),
+            idIva: item.id_iva,
+            ivaPorcentaje: Number(item.iva?.porcentaje ?? 0),
+            codigoBarras: item.codigo_barras ?? '',
+          })),
+        },
+      };
+    });
   }
 
   // =========================
@@ -655,6 +793,10 @@ export class RemisionesCompraService {
       args.idBodegaActiva,
     );
 
+    if (!bodegasPermitidas.length) {
+      throw new ForbiddenException('El usuario no tiene bodegas asignadas');
+    }
+
     if (args.idBodega) {
       this.assertBodegaAccess(args.idBodega, bodegasPermitidas);
 
@@ -668,42 +810,14 @@ export class RemisionesCompraService {
       });
     }
 
-    if (args.idBodegaActiva) {
-      this.assertBodegaAccess(args.idBodegaActiva, bodegasPermitidas);
-
-      return this.prisma.remision_compra.findMany({
-        where: {
-          ...(args.idCompra ? { id_compra: args.idCompra } : {}),
-          id_bodega: args.idBodegaActiva,
-        },
-        orderBy: { id_remision_compra: 'desc' },
-        select: remisionCompraListSelect,
-      });
-    }
-
-    if (bodegasPermitidas.length === 1) {
-      return this.prisma.remision_compra.findMany({
-        where: {
-          ...(args.idCompra ? { id_compra: args.idCompra } : {}),
-          id_bodega: bodegasPermitidas[0],
-        },
-        orderBy: { id_remision_compra: 'desc' },
-        select: remisionCompraListSelect,
-      });
-    }
-
-    if (bodegasPermitidas.length > 1) {
-      return this.prisma.remision_compra.findMany({
-        where: {
-          ...(args.idCompra ? { id_compra: args.idCompra } : {}),
-          id_bodega: { in: bodegasPermitidas },
-        },
-        orderBy: { id_remision_compra: 'desc' },
-        select: remisionCompraListSelect,
-      });
-    }
-
-    throw new ForbiddenException('El usuario no tiene bodegas asignadas');
+    return this.prisma.remision_compra.findMany({
+      where: {
+        ...(args.idCompra ? { id_compra: args.idCompra } : {}),
+        id_bodega: { in: bodegasPermitidas },
+      },
+      orderBy: { id_remision_compra: 'desc' },
+      select: remisionCompraListSelect,
+    });
   }
 
   async findOne(id: number, opts: ScopeOpts) {
@@ -866,14 +980,12 @@ export class RemisionesCompraService {
         return actual;
       }
 
-      // Si ya está anulada, no se toca más
       if (actual.id_estado_remision_compra === ESTADO_ANULADA) {
         throw new BadRequestException(
           'La remisión ya está anulada y no puede cambiar de estado',
         );
       }
 
-      // Si ya aplicó existencias, no se puede mover a ningún otro estado
       if (
         actual.id_estado_remision_compra === ESTADO_APLICADA ||
         actual.afecta_existencias
@@ -883,16 +995,12 @@ export class RemisionesCompraService {
         );
       }
 
-      // Solo desde pendiente se permite cambiar
       if (actual.id_estado_remision_compra !== ESTADO_PENDIENTE) {
         throw new BadRequestException(
           'Solo las remisiones en estado pendiente pueden cambiar de estado',
         );
       }
 
-      // =========================
-      // PENDIENTE -> ANULADA
-      // =========================
       if (dto.id_estado_remision_compra === ESTADO_ANULADA) {
         return tx.remision_compra.update({
           where: { id_remision_compra: id },
@@ -906,9 +1014,6 @@ export class RemisionesCompraService {
         });
       }
 
-      // =========================
-      // PENDIENTE -> APLICADA
-      // =========================
       if (dto.id_estado_remision_compra === ESTADO_APLICADA) {
         if (actual.id_bodega === null) {
           throw new BadRequestException(
