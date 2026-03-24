@@ -13,7 +13,7 @@ import {
 import { RolesService } from './roles.service';
 import { CreateRolDto } from './dto/create-rol.dto';
 import { UpdateRolDto } from './dto/update-rol.dto';
-import { AsignarPermisosRolDto } from './dto/asignar-permisos-rol.dto';
+import { AsignarPermisosRolDto } from './dto/asignar-permiso-rol.dto';
 
 @Controller('roles')
 export class RolesController {
