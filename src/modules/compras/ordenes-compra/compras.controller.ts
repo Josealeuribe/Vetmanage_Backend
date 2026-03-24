@@ -28,10 +28,15 @@ export class ComprasController {
   }
 
   @Get()
-  findAll(@Req() req: any, @Query('id_bodega') id_bodega?: string) {
+  findAll(
+    @Req() req: any,
+    @Query('id_bodega') id_bodega?: string,
+    @Query('solo_aprobadas') solo_aprobadas?: string,
+  ) {
     return this.comprasService.findAll({
       idUsuario: req.user.id_usuario,
       idBodegaScope: id_bodega ? Number(id_bodega) : undefined,
+      soloAprobadas: solo_aprobadas === 'true' || solo_aprobadas === '1',
     });
   }
 
