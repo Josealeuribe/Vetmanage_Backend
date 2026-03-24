@@ -14,10 +14,8 @@ import { VentasModule } from './modules/ventas/ventas.module';
 import { ConfiguracionModule } from './modules/configuracion/configuracion.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { PermisosModule } from './modules/configuracion/permisos/permisos.module';
-import { TipoProveedorModule } from './modules/tipo-proveedor/tipo-proveedor.module';
-import { MunicipioModule } from './modules/municipios/municipio.module';
-import { TipoDocumentoModule } from './modules/tipo-documento/tipo-documento.module';
-import { TerminoPagoModule } from './modules/termino-pago/termino-pago.module';
+import { TipoProveedorModule } from './modules/compras/proveedores/tipo-proveedor/tipo-proveedor.module';
+import { TerminoPagoModule } from './modules/compras/termino-pago/termino-pago.module';
 
 @Module({
   imports: [
@@ -33,9 +31,7 @@ import { TerminoPagoModule } from './modules/termino-pago/termino-pago.module';
     ConfiguracionModule,
     UsuariosModule,
     PermisosModule,
-    TipoDocumentoModule,
     TipoProveedorModule,
-    MunicipioModule,
     TerminoPagoModule,
   ],
   controllers: [AppController],
