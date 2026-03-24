@@ -16,7 +16,6 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { PermisosModule } from './modules/configuracion/permisos/permisos.module';
 import { TipoProveedorModule } from './modules/tipo-proveedor/tipo-proveedor.module';
 import { MunicipioModule } from './modules/municipios/municipio.module';
-import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { TipoDocumentoModule } from './modules/tipo-documento/tipo-documento.module';
 import { TerminoPagoModule } from './modules/termino-pago/termino-pago.module';
 
@@ -34,7 +33,6 @@ import { TerminoPagoModule } from './modules/termino-pago/termino-pago.module';
     ConfiguracionModule,
     UsuariosModule,
     PermisosModule,
-    CatalogosModule,
     TipoDocumentoModule,
     TipoProveedorModule,
     MunicipioModule,

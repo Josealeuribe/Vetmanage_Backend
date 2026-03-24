@@ -216,10 +216,9 @@ export class RemisionesCompraService {
             nombre_empresa: true,
             num_documento: true,
             id_tipo_doc: true,
-            // Si en tu schema la relación se llama distinto, cambia "tipo_doc"
-            tipo_doc: {
+            tipo_documento: {
               select: {
-                nombre_tipo_doc: true,
+                nombre_doc: true,
               },
             },
           },
@@ -230,7 +229,6 @@ export class RemisionesCompraService {
             cantidad: true,
             precio_unitario: true,
             id_iva: true,
-            codigo_barras: true,
             producto: {
               select: {
                 id_producto: true,
@@ -316,7 +314,7 @@ export class RemisionesCompraService {
           proveedorId: compra.id_proveedor,
           proveedorNombre: compra.proveedor?.nombre_empresa ?? '',
           proveedorTipoDocumento:
-            compra.proveedor?.tipo_doc?.nombre_tipo_doc ??
+            compra.proveedor?.tipo_documento?.nombre_doc ??
             String(compra.proveedor?.id_tipo_doc ?? ''),
           proveedorNumeroDocumento: compra.proveedor?.num_documento ?? '',
           idBodega: compra.id_bodega,
@@ -324,13 +322,12 @@ export class RemisionesCompraService {
           items: compra.detalle_compra.map((item) => ({
             idProducto: item.id_producto,
             productoNombre:
-              item.producto?.nombre_producto ??
-              `Producto ${item.id_producto}`,
+              item.producto?.nombre_producto ?? `Producto ${item.id_producto}`,
             cantidad: Number(item.cantidad),
             precioUnitario: Number(item.precio_unitario),
             idIva: item.id_iva,
             ivaPorcentaje: Number(item.iva?.porcentaje ?? 0),
-            codigoBarras: item.codigo_barras ?? '',
+            codigoBarras: '',
           })),
         },
       };

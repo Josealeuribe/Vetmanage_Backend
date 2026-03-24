@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
@@ -7,7 +7,7 @@ export class IvaService {
 
   async findAll() {
     return this.prisma.iva.findMany({
-      orderBy: { porcentaje: 'asc' },
+      orderBy: { id_iva: 'asc' },
       select: {
         id_iva: true,
         porcentaje: true,
@@ -16,12 +16,18 @@ export class IvaService {
   }
 
   async findOne(id: number) {
-    return this.prisma.iva.findUnique({
+    const iva = await this.prisma.iva.findUnique({
       where: { id_iva: id },
       select: {
         id_iva: true,
         porcentaje: true,
       },
     });
+
+    if (!iva) {
+      throw new NotFoundException('IVA no encontrado');
+    }
+
+    return iva;
   }
 }

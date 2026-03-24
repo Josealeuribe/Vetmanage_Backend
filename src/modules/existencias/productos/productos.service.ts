@@ -8,7 +8,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateProductoDto } from './dto/crear-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { ListProductoQueryDto } from './dto/list-producto.query.dto';
-import { productoSelect } from './iva/selects/producto.select';
+import { productoSelect } from './selects/producto.select';
 
 export type ProductoPayload = Prisma.productoGetPayload<{
   select: typeof productoSelect;
@@ -75,10 +75,14 @@ export class ProductosService {
   ): Promise<ProductosFindAllResponse> {
     const where: Prisma.productoWhereInput = {};
 
-    if (query.estado !== undefined) where.estado = query.estado === 'true';
+    if (query.estado !== undefined) {
+      where.estado = query.estado === 'true';
+    }
+
     if (query.id_categoria_producto !== undefined) {
       where.id_categoria_producto = query.id_categoria_producto;
     }
+
     if (query.id_iva !== undefined) {
       where.id_iva = query.id_iva;
     }
