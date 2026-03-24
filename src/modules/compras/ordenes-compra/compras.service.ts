@@ -22,6 +22,12 @@ type UpdateOpts = {
   idUsuario: number;
 };
 
+type FindAllArgs = {
+  idUsuario: number;
+  idBodegaScope?: number;
+  soloAprobadas?: boolean;
+};
+
 const ESTADO_PENDIENTE = 1;
 const ESTADO_APROBADA = 2;
 const ESTADO_ANULADA = 3;
@@ -30,7 +36,9 @@ const ESTADO_ANULADA = 3;
 export class ComprasService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async getBodegasPermitidasUsuario(idUsuario: number): Promise<number[]> {
+  private async getBodegasPermitidasUsuario(
+    idUsuario: number,
+  ): Promise<number[]> {
     const usuario = await this.prisma.usuario.findUnique({
       where: { id_usuario: idUsuario },
       select: {
@@ -90,7 +98,9 @@ export class ComprasService {
 
     if (duplicados.length) {
       throw new BadRequestException(
-        `Hay productos repetidos en el detalle: ${[...new Set(duplicados)].join(', ')}`,
+        `Hay productos repetidos en el detalle: ${[
+          ...new Set(duplicados),
+        ].join(', ')}`,
       );
     }
   }
@@ -292,16 +302,25 @@ export class ComprasService {
     });
   }
 
-  async findAll(args: { idUsuario: number; idBodegaScope?: number }) {
+  async findAll(args: {
+    idUsuario: number;
+    idBodegaScope?: number;
+    soloAprobadas?: boolean;
+  }) {
     const bodegasPermitidas = await this.getBodegasPermitidasUsuario(
       args.idUsuario,
     );
+
+    const whereBase = {
+      ...(args.soloAprobadas ? { id_estado_compra: ESTADO_APROBADA } : {}),
+    };
 
     if (args.idBodegaScope !== undefined) {
       this.assertBodegaAccess(args.idBodegaScope, bodegasPermitidas);
 
       return this.prisma.compras.findMany({
         where: {
+          ...whereBase,
           id_bodega: args.idBodegaScope,
         },
         orderBy: { id_compra: 'desc' },
@@ -311,6 +330,7 @@ export class ComprasService {
 
     return this.prisma.compras.findMany({
       where: {
+        ...whereBase,
         id_bodega: { in: bodegasPermitidas },
       },
       orderBy: { id_compra: 'desc' },

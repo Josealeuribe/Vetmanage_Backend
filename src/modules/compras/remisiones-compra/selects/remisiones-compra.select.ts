@@ -29,6 +29,14 @@ export const remisionCompraListSelect =
       select: {
         id_proveedor: true,
         nombre_empresa: true,
+        num_documento: true,
+        id_tipo_doc: true,
+        tipo_documento: {
+          select: {
+            id_tipo_doc: true,
+            nombre_doc: true,
+          },
+        },
       },
     },
 
@@ -101,6 +109,14 @@ export const remisionCompraDetailSelect =
       select: {
         id_proveedor: true,
         nombre_empresa: true,
+        num_documento: true,
+        id_tipo_doc: true,
+        tipo_documento: {
+          select: {
+            id_tipo_doc: true,
+            nombre_doc: true,
+          },
+        },
       },
     },
 

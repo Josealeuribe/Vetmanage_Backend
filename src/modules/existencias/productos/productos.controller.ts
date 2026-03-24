@@ -29,8 +29,7 @@ export class ProductosController {
 
   @Get()
   findAll(
-    @Query()
-    query: ListProductoQueryDto,
+    @Query() query: ListProductoQueryDto,
   ): Promise<ProductosFindAllResponse> {
     return this.service.findAll(query);
   }
@@ -45,10 +44,8 @@ export class ProductosController {
 
   @Patch(':id')
   update(
-    @Param('id', ParseIntPipe)
-    id: number,
-    @Body()
-    dto: UpdateProductoDto,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductoDto,
   ): Promise<ProductoPayload> {
     return this.service.update(id, dto);
   }

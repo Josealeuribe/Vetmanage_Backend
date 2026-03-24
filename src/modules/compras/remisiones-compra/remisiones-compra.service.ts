@@ -239,6 +239,40 @@ export class RemisionesCompraService {
     return estado.id_estado_remision_compra;
   }
 
+  private async getEstadoCompraIdByNombre(
+    tx: Prisma.TransactionClient,
+    nombreEstado: string,
+  ) {
+    const estado = await tx.estado_compra.findFirst({
+      where: { nombre_estado: nombreEstado },
+      select: { id_estado_compra: true },
+    });
+
+    if (!estado) {
+      throw new BadRequestException(
+        `No existe el estado de compra "${nombreEstado}"`,
+      );
+    }
+
+    return estado.id_estado_compra;
+  }
+
+  private async assertCompraAprobada(
+    tx: Prisma.TransactionClient,
+    idEstadoCompra: number,
+  ) {
+    const ESTADO_APROBADA = await this.getEstadoCompraIdByNombre(
+      tx,
+      'Aprobada',
+    );
+
+    if (idEstadoCompra !== ESTADO_APROBADA) {
+      throw new BadRequestException(
+        'Solo se pueden generar remisiones desde compras aprobadas',
+      );
+    }
+  }
+
   private async getCompraContextoBase(
     tx: Prisma.TransactionClient,
     idCompra: number,
@@ -246,7 +280,58 @@ export class RemisionesCompraService {
   ) {
     const compra = await tx.compras.findUnique({
       where: { id_compra: idCompra },
-      select: compraContextoSelect,
+      select: {
+        id_compra: true,
+        codigo_compra: true,
+        id_bodega: true,
+        id_proveedor: true,
+        id_estado_compra: true,
+        estado_compra: {
+          select: {
+            id_estado_compra: true,
+            nombre_estado: true,
+          },
+        },
+        bodega: {
+          select: {
+            id_bodega: true,
+            nombre_bodega: true,
+          },
+        },
+        proveedor: {
+          select: {
+            id_proveedor: true,
+            nombre_empresa: true,
+            num_documento: true,
+            id_tipo_doc: true,
+            tipo_documento: {
+              select: {
+                nombre_doc: true,
+              },
+            },
+          },
+        },
+        detalle_compra: {
+          select: {
+            id_producto: true,
+            cantidad: true,
+            precio_unitario: true,
+            id_iva: true,
+            producto: {
+              select: {
+                id_producto: true,
+                nombre_producto: true,
+              },
+            },
+            iva: {
+              select: {
+                id_iva: true,
+                porcentaje: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!compra) {
@@ -303,6 +388,8 @@ export class RemisionesCompraService {
         bodegasPermitidas,
       );
 
+      await this.assertCompraAprobada(tx, compra.id_estado_compra);
+
       const numeroRemisionSugerido = await this.nextCodigoRemisionCompra(
         tx,
         'RMC',
@@ -317,20 +404,36 @@ export class RemisionesCompraService {
           proveedorId: compra.id_proveedor,
           proveedorNombre: compra.proveedor?.nombre_empresa ?? '',
           proveedorTipoDocumento:
-            compra.proveedor?.tipo_documento?.nombre_doc ?? '',
+            compra.proveedor?.tipo_documento?.nombre_doc ??
+            String(compra.proveedor?.id_tipo_doc ?? ''),
           proveedorNumeroDocumento: compra.proveedor?.num_documento ?? '',
           idBodega: compra.id_bodega,
           bodegaNombre: compra.bodega?.nombre_bodega ?? '',
-          items: compra.detalle_compra.map((item) => ({
-            idProducto: item.id_producto,
-            productoNombre:
-              item.producto?.nombre_producto ?? `Producto ${item.id_producto}`,
-            cantidad: Number(item.cantidad),
-            precioUnitario: Number(item.precio_unitario),
-            idIva: item.id_iva,
-            ivaPorcentaje: Number(item.iva?.porcentaje ?? 0),
-            codigoBarras: '',
-          })),
+          estadoCompraId: compra.id_estado_compra,
+          estadoCompraNombre: compra.estado_compra?.nombre_estado ?? '',
+          items: compra.detalle_compra.map((item) => {
+            const cantidad = Number(item.cantidad);
+            const precioUnitario = Number(item.precio_unitario);
+            const ivaPorcentaje = Number(item.iva?.porcentaje ?? 0);
+
+            return {
+              idProducto: item.id_producto,
+              id_producto: item.id_producto,
+              productoNombre:
+                item.producto?.nombre_producto ?? `Producto ${item.id_producto}`,
+              producto_nombre:
+                item.producto?.nombre_producto ?? `Producto ${item.id_producto}`,
+              cantidad,
+              precioUnitario,
+              precio_unitario: precioUnitario,
+              idIva: item.id_iva,
+              id_iva: item.id_iva,
+              ivaPorcentaje,
+              iva_porcentaje: ivaPorcentaje,
+              codigoBarras: '',
+              codigo_barras: '',
+            };
+          }),
         },
       };
     });
@@ -647,7 +750,6 @@ export class RemisionesCompraService {
           id_bodega: remision.id_bodega,
           lote: item.lote ?? '',
           fecha_vencimiento: item.fecha_vencimiento ?? null,
-          codigo_barras: item.codigo_barras ?? null,
         },
       });
 
@@ -659,7 +761,8 @@ export class RemisionesCompraService {
               increment: item.cantidad,
             },
             nota: item.nota ?? existencia.nota,
-            codigo_barras: item.codigo_barras ?? existencia.codigo_barras,
+            codigo_barras:
+              item.codigo_barras ?? existencia.codigo_barras ?? null,
           },
         });
       } else {
@@ -711,6 +814,7 @@ export class RemisionesCompraService {
         dto.id_bodega,
       );
 
+      await this.assertCompraAprobada(tx, compra.id_estado_compra);
       await this.validarProveedor(tx, dto.id_proveedor);
       await this.validarFactura(tx, dto.id_factura);
       await this.validarEstadoRemision(tx, ESTADO_PENDIENTE);
@@ -895,6 +999,7 @@ export class RemisionesCompraService {
           actual.id_bodega ?? undefined,
         );
 
+        await this.assertCompraAprobada(tx, compra.id_estado_compra);
         await this.validarProductosEIvas(tx, dto.detalle_remision_compra);
         this.validarCantidadesYPrecios(dto.detalle_remision_compra);
         this.validarDetalleSinDuplicados(dto.detalle_remision_compra);
