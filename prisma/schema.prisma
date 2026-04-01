@@ -74,9 +74,9 @@ model compras {
   id_proveedor       Int               @db.UnsignedInt
   id_termino_pago    Int               @db.UnsignedInt
   descripcion        String?           @db.Text
-  subtotal           Decimal           @default(0.00) @db.Decimal(14, 2)
-  total_iva          Decimal           @default(0.00) @db.Decimal(14, 2)
-  total              Decimal           @default(0.00) @db.Decimal(14, 2)
+  subtotal           Decimal           @default(0.00) @db.Decimal(10, 2)
+  total_iva          Decimal           @default(0.00) @db.Decimal(10, 2)
+  total              Decimal           @default(0.00) @db.Decimal(10, 2)
   fecha_entrega      DateTime?         @db.Date
   id_estado_compra   Int               @db.UnsignedInt
   id_usuario_creador Int               @db.UnsignedInt
