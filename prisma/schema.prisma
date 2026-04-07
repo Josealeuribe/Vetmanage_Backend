@@ -295,7 +295,7 @@ model existencias {
 
 model factura {
   id_factura        Int              @id @default(autoincrement()) @db.UnsignedInt
-  codigo_factura    String           @unique(map: "codigo_factura") @db.VarChar(20)
+  codigo_factura    String           @unique(map: "codigo_factura") @db.VarChar(50)
   fecha_factura     DateTime         @db.Date
   fecha_vencimiento DateTime?        @db.Date
   total             Decimal          @db.Decimal(10, 2)
