@@ -7,20 +7,22 @@ datasource db {
 }
 
 model bodega {
-  id_bodega                                   Int                   @id @default(autoincrement()) @db.UnsignedInt
-  nombre_bodega                               String                @db.VarChar(100)
-  direccion                                   String                @db.VarChar(255)
-  id_municipio                                Int                   @db.UnsignedInt
-  estado                                      Boolean               @default(true)
-  municipios                                  municipios            @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_bodega_municipio")
-  bodegas_por_usuario                         bodegas_por_usuario[]
-  compras                                     compras[]
-  cotizacion                                  cotizacion[]
-  existencias                                 existencias[]
-  orden_venta                                 orden_venta[]
-  remision_compra                             remision_compra[]
-  traslado_traslado_id_bodega_destinoTobodega traslado[]            @relation("traslado_id_bodega_destinoTobodega")
-  traslado_traslado_id_bodega_origenTobodega  traslado[]            @relation("traslado_id_bodega_origenTobodega")
+  id_bodega                                                               Int                    @id @default(autoincrement()) @db.UnsignedInt
+  nombre_bodega                                                           String                 @db.VarChar(100)
+  direccion                                                               String                 @db.VarChar(255)
+  id_municipio                                                            Int                    @db.UnsignedInt
+  estado                                                                  Boolean                @default(true)
+  municipios                                                              municipios             @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_bodega_municipio")
+  bodegas_por_usuario                                                     bodegas_por_usuario[]
+  compras                                                                 compras[]
+  cotizacion                                                              cotizacion[]
+  existencias                                                             existencias[]
+  notificacion_usuario_notificacion_usuario_id_bodegaTobodega             notificacion_usuario[] @relation("notificacion_usuario_id_bodegaTobodega")
+  notificacion_usuario_notificacion_usuario_id_bodega_relacionadaTobodega notificacion_usuario[] @relation("notificacion_usuario_id_bodega_relacionadaTobodega")
+  orden_venta                                                             orden_venta[]
+  remision_compra                                                         remision_compra[]
+  traslado_traslado_id_bodega_destinoTobodega                             traslado[]             @relation("traslado_id_bodega_destinoTobodega")
+  traslado_traslado_id_bodega_origenTobodega                              traslado[]             @relation("traslado_id_bodega_origenTobodega")
 
   @@index([id_municipio], map: "fk_bodega_municipio")
 }
@@ -74,9 +76,9 @@ model compras {
   id_proveedor       Int               @db.UnsignedInt
   id_termino_pago    Int               @db.UnsignedInt
   descripcion        String?           @db.Text
-  subtotal           Decimal           @default(0.00) @db.Decimal(10, 2)
-  total_iva          Decimal           @default(0.00) @db.Decimal(10, 2)
-  total              Decimal           @default(0.00) @db.Decimal(10, 2)
+  subtotal           Decimal           @default(0.00) @db.Decimal(14, 2)
+  total_iva          Decimal           @default(0.00) @db.Decimal(14, 2)
+  total              Decimal           @default(0.00) @db.Decimal(14, 2)
   fecha_entrega      DateTime?         @db.Date
   id_estado_compra   Int               @db.UnsignedInt
   id_usuario_creador Int               @db.UnsignedInt
@@ -295,7 +297,7 @@ model existencias {
 
 model factura {
   id_factura        Int              @id @default(autoincrement()) @db.UnsignedInt
-  codigo_factura    String           @unique(map: "codigo_factura") @db.VarChar(20)
+  codigo_factura    String           @unique(map: "codigo_factura") @db.VarChar(50)
   fecha_factura     DateTime         @db.Date
   fecha_vencimiento DateTime?        @db.Date
   total             Decimal          @db.Decimal(10, 2)
@@ -588,6 +590,7 @@ model usuario {
   bodegas_por_usuario                                                    bodegas_por_usuario[]
   compras                                                                compras[]
   cotizacion                                                             cotizacion[]
+  notificacion_usuario                                                   notificacion_usuario[]
   orden_venta                                                            orden_venta[]
   password_setup_tokens                                                  password_setup_token[]
   remision_compra                                                        remision_compra[]
@@ -620,4 +623,41 @@ model password_setup_token {
 
   @@index([expires_at], map: "idx_password_setup_expires_at")
   @@index([id_usuario], map: "idx_password_setup_id_usuario")
+}
+
+model notificacion_usuario {
+  id_notificacion_usuario                                   Int       @id @default(autoincrement()) @db.UnsignedInt
+  id_usuario                                                Int       @db.UnsignedInt
+  tipo                                                      String    @db.VarChar(50)
+  prioridad                                                 String    @db.VarChar(20)
+  titulo                                                    String    @db.VarChar(150)
+  descripcion                                               String    @db.VarChar(255)
+  modulo                                                    String    @db.VarChar(50)
+  accion                                                    String?   @db.VarChar(30)
+  entidad_tipo                                              String?   @db.VarChar(50)
+  entidad_id                                                String?   @db.VarChar(50)
+  ruta                                                      String?   @db.VarChar(255)
+  hash_unico                                                String
+  metadata                                                  String?   @db.LongText
+  id_bodega                                                 Int?      @db.UnsignedInt
+  id_bodega_relacionada                                     Int?      @db.UnsignedInt
+  leida                                                     Boolean   @default(false)
+  archivada                                                 Boolean   @default(false)
+  eliminada                                                 Boolean   @default(false)
+  activa                                                    Boolean   @default(true)
+  fecha_evento                                              DateTime? @db.DateTime(0)
+  fecha_generada                                            DateTime  @default(now()) @db.DateTime(0)
+  fecha_actualizada                                         DateTime  @default(now()) @updatedAt @db.DateTime(0)
+  fecha_leida                                               DateTime? @db.DateTime(0)
+  fecha_archivada                                           DateTime? @db.DateTime(0)
+  fecha_eliminada                                           DateTime? @db.DateTime(0)
+  bodega_notificacion_usuario_id_bodegaTobodega             bodega?   @relation("notificacion_usuario_id_bodegaTobodega", fields: [id_bodega], references: [id_bodega], map: "fk_notificacion_usuario_bodega")
+  bodega_notificacion_usuario_id_bodega_relacionadaTobodega bodega?   @relation("notificacion_usuario_id_bodega_relacionadaTobodega", fields: [id_bodega_relacionada], references: [id_bodega], map: "fk_notificacion_usuario_bodega_relacionada")
+  usuario                                                   usuario   @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, map: "fk_notificacion_usuario_usuario")
+
+  @@unique([id_usuario, hash_unico], map: "uq_notificacion_usuario_hash")
+  @@index([id_usuario, leida, activa, eliminada, archivada], map: "idx_notif_usuario_estado")
+  @@index([id_bodega], map: "idx_notif_usuario_bodega")
+  @@index([id_bodega_relacionada], map: "idx_notif_usuario_bodega_relacionada")
+  @@index([fecha_generada], map: "idx_notif_usuario_fecha_generada")
 }
