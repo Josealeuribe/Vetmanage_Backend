@@ -23,7 +23,7 @@ function isP2002(e: unknown): boolean {
 
 @Injectable()
 export class ClientesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   // ---------- helpers ----------
   private normalizeStr(v?: string): string | null {
@@ -33,7 +33,7 @@ export class ClientesService {
 
   private nextCodigoFrom(
     prev: string | null,
-    prefix = 'CLI-',
+    prefix = 'CL-',
     width = 4,
   ): string {
     if (!prev || !prev.startsWith(prefix)) {
@@ -51,7 +51,7 @@ export class ClientesService {
       select: { codigo_cliente: true },
     });
 
-    return this.nextCodigoFrom(ultimo?.codigo_cliente ?? null, 'CLI-', 4);
+    return this.nextCodigoFrom(ultimo?.codigo_cliente ?? null, 'CL-', 4);
   }
 
   private async assertFks(params: {
@@ -145,13 +145,13 @@ export class ClientesService {
       ...(incluirInactivos ? {} : { estado: true }),
       ...(q
         ? {
-            OR: [
-              { nombre_cliente: { contains: q } },
-              { num_documento: { contains: q } },
-              { codigo_cliente: { contains: q } },
-              { email: { contains: q } },
-            ],
-          }
+          OR: [
+            { nombre_cliente: { contains: q } },
+            { num_documento: { contains: q } },
+            { codigo_cliente: { contains: q } },
+            { email: { contains: q } },
+          ],
+        }
         : {}),
     };
 

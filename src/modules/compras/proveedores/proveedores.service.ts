@@ -32,6 +32,41 @@ export type ProveedoresFindAllResponse =
 export class ProveedoresService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private normalizeStr(value?: string | null): string | null {
+    const normalized = value?.trim();
+    return normalized && normalized.length > 0 ? normalized : null;
+  }
+
+  private nextCodigoFrom(
+    prev: string | null,
+    prefix = 'PV-',
+    width = 4,
+  ): string {
+    if (!prev || !prev.startsWith(prefix)) {
+      return `${prefix}${String(1).padStart(width, '0')}`;
+    }
+
+    const part = prev.slice(prefix.length);
+    const n = Number.parseInt(part, 10);
+    const next = Number.isFinite(n) ? n + 1 : 1;
+
+    return `${prefix}${String(next).padStart(width, '0')}`;
+  }
+
+  private async generarCodigoProveedor(): Promise<string> {
+    const ultimo = await this.prisma.proveedor.findFirst({
+      where: {
+        codigo_proveedor: {
+          startsWith: 'PV-',
+        },
+      },
+      orderBy: { id_proveedor: 'desc' },
+      select: { codigo_proveedor: true },
+    });
+
+    return this.nextCodigoFrom(ultimo?.codigo_proveedor ?? null, 'PV-', 4);
+  }
+
   private async assertMunicipioExists(id_municipio: number) {
     const exists = await this.prisma.municipios.findUnique({
       where: { id_municipio },
@@ -61,15 +96,19 @@ export class ProveedoresService {
     await this.assertTipoDocExists(dto.id_tipo_doc);
     await this.assertTipoProveedorExists(dto.id_tipo_proveedor);
 
+    const codigo_proveedor =
+      this.normalizeStr(dto.codigo_proveedor) ??
+      (await this.generarCodigoProveedor());
+
     return this.prisma.proveedor.create({
       data: {
-        codigo_proveedor: dto.codigo_proveedor?.trim() || null,
+        codigo_proveedor,
         num_documento: dto.num_documento.trim(),
         nombre_empresa: dto.nombre_empresa.trim(),
-        email: dto.email?.trim() || null,
-        telefono: dto.telefono?.trim() || null,
-        direccion: dto.direccion?.trim() || null,
-        nombre_contacto: dto.nombre_contacto?.trim() || null,
+        email: this.normalizeStr(dto.email),
+        telefono: this.normalizeStr(dto.telefono),
+        direccion: this.normalizeStr(dto.direccion),
+        nombre_contacto: this.normalizeStr(dto.nombre_contacto),
         id_tipo_proveedor: dto.id_tipo_proveedor,
         id_tipo_doc: dto.id_tipo_doc,
         id_municipio: dto.id_municipio,
@@ -106,7 +145,6 @@ export class ProveedoresService {
     const includeRefs = query.includeRefs === 'true';
     const hasPagination = query.page !== undefined || query.limit !== undefined;
 
-    // Legacy: array
     if (!hasPagination) {
       if (includeRefs) {
         return this.prisma.proveedor.findMany({
@@ -127,7 +165,6 @@ export class ProveedoresService {
       });
     }
 
-    // Paginado
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;

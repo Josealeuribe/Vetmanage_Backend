@@ -399,7 +399,7 @@ export class PagosAbonosService {
       await tx.factura.update({
         where: { id_factura: facturaCreada.id_factura },
         data: {
-          codigo_factura: `FAC-${String(facturaCreada.id_factura).padStart(4, '0')}`,
+          codigo_factura: `FC-${String(facturaCreada.id_factura).padStart(4, '0')}`,
         },
       });
 

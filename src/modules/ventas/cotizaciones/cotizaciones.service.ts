@@ -145,7 +145,7 @@ export class CotizacionesService {
       return tx.cotizacion.update({
         where: { id_cotizacion: cotizacion.id_cotizacion },
         data: {
-          codigo_cotizacion: `COT-${String(cotizacion.id_cotizacion).padStart(4, '0')}`,
+          codigo_cotizacion: `CT-${String(cotizacion.id_cotizacion).padStart(4, '0')}`,
         },
         include: this.includeCotizacion,
       });

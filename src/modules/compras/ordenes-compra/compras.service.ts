@@ -107,7 +107,7 @@ export class ComprasService {
 
   private async nextCodigoCompra(
     tx: Prisma.TransactionClient,
-    prefix = 'CMP',
+    prefix = 'OC',
     pad = 4,
   ) {
     const last = await tx.compras.findFirst({
@@ -267,7 +267,7 @@ export class ComprasService {
     return this.prisma.$transaction(async (tx) => {
       await this.validarReferencias(tx, dto, idBodegaFinal!);
 
-      const codigo_compra = await this.nextCodigoCompra(tx, 'CMP', 4);
+      const codigo_compra = await this.nextCodigoCompra(tx, 'OC', 4);
       const totales = await this.calcularTotales(tx, dto.detalle);
 
       const compra = await tx.compras.create({

@@ -204,7 +204,7 @@ export class RemisionesCompraService {
 
   private async nextCodigoRemisionCompra(
     tx: Prisma.TransactionClient,
-    prefix = 'RMC',
+    prefix = 'RC',
     pad = 4,
   ) {
     const last = await tx.remision_compra.findFirst({
@@ -359,7 +359,7 @@ export class RemisionesCompraService {
     }
 
     const numeroRemision = await this.prisma.$transaction((tx) =>
-      this.nextCodigoRemisionCompra(tx, 'RMC', 4),
+      this.nextCodigoRemisionCompra(tx, 'RC', 4),
     );
 
     return {
@@ -392,7 +392,7 @@ export class RemisionesCompraService {
 
       const numeroRemisionSugerido = await this.nextCodigoRemisionCompra(
         tx,
-        'RMC',
+        'RC',
         4,
       );
 
@@ -848,7 +848,7 @@ export class RemisionesCompraService {
 
       const codigo_remision_compra = await this.nextCodigoRemisionCompra(
         tx,
-        'RMC',
+        'RC',
         4,
       );
 
