@@ -64,6 +64,50 @@ export class ExistenciasService {
     }
   }
 
+  private async getPrecioMinimoVentaProducto(
+    idProducto: number,
+    idBodega: number,
+  ) {
+    const ultimaRemisionCompra = await this.prisma.remision_compra.findFirst({
+      where: {
+        id_bodega: idBodega,
+        detalle_remision_compra: {
+          some: {
+            id_producto: idProducto,
+          },
+        },
+        NOT: {
+          estado_remision_compra: {
+            nombre_estado: {
+              contains: 'anulad',
+            },
+          },
+        },
+      },
+      orderBy: [{ fecha_creacion: 'desc' }, { id_remision_compra: 'desc' }],
+      select: {
+        detalle_remision_compra: {
+          where: {
+            id_producto: idProducto,
+          },
+          orderBy: {
+            id_detalle_remision_compra: 'desc',
+          },
+          take: 1,
+          select: {
+            precio_unitario: true,
+          },
+        },
+      },
+    });
+
+    const precio = Number(
+      ultimaRemisionCompra?.detalle_remision_compra?.[0]?.precio_unitario ?? 0,
+    );
+
+    return precio > 0 ? precio : null;
+  }
+
   private async validarDuplicadoExistencia(
     tx: Prisma.TransactionClient,
     args: {
@@ -262,90 +306,187 @@ export class ExistenciasService {
     };
   }
 
-  async findProductosVista(opts: ProductosVistaOpts) {
-    const scope = opts.scope ?? 'active';
+//   async findProductosVista(opts: ProductosVistaOpts) {
+//     const scope = opts.scope ?? 'active';
 
-    if (scope === 'active') {
-      if (!opts.idBodegaActiva || Number.isNaN(opts.idBodegaActiva)) {
-        throw new BadRequestException(
-          'Bodega activa inválida para consultar productos-vista',
-        );
-      }
+//     if (scope === 'active') {
+//       if (!opts.idBodegaActiva || Number.isNaN(opts.idBodegaActiva)) {
+//         throw new BadRequestException(
+//           'Bodega activa inválida para consultar productos-vista',
+//         );
+//       }
 
-      this.assertBodegaAccess(opts.idBodegaActiva, opts.bodegasPermitidas);
+//       this.assertBodegaAccess(opts.idBodegaActiva, opts.bodegasPermitidas);
+//     }
+
+//     const baseWhereExistencias: Prisma.existenciasWhereInput =
+//       scope === 'all'
+//         ? opts.bodegasPermitidas?.length
+//           ? { id_bodega: { in: opts.bodegasPermitidas } }
+//           : {}
+//         : { id_bodega: opts.idBodegaActiva! };
+
+//     const whereExistencias: Prisma.existenciasWhereInput = {
+//       ...baseWhereExistencias,
+//       cantidad: { gt: new Prisma.Decimal(0) },
+//     };
+
+//     const productos = await this.prisma.producto.findMany({
+//       orderBy: { nombre_producto: 'asc' },
+//       include: {
+//         categoria_producto: true,
+//         iva: true,
+//         existencias: {
+//           where: whereExistencias,
+//           orderBy: [{ fecha_vencimiento: 'asc' }, { lote: 'asc' }],
+//           include: {
+//             bodega: {
+//               select: {
+//                 id_bodega: true,
+//                 nombre_bodega: true,
+//               },
+//             },
+//           },
+//         },
+//       },
+//     });
+
+//     return productos
+//       .map((producto) => {
+//         const lotes = producto.existencias.map((existencia) => ({
+//           id_existencia: existencia.id_existencia,
+//           lote: existencia.lote,
+//           cantidad: Number(existencia.cantidad),
+//           fecha_vencimiento: existencia.fecha_vencimiento,
+//           id_bodega: existencia.id_bodega,
+//           nombre_bodega: existencia.bodega?.nombre_bodega ?? '',
+//         }));
+
+//         const stock_total = lotes.reduce(
+//           (sum, lote) => sum + Number(lote.cantidad),
+//           0,
+//         );
+
+//         return {
+//           id_producto: producto.id_producto,
+//           nombre_producto: producto.nombre_producto,
+//           descripcion: producto.descripcion,
+//           id_categoria_producto: producto.id_categoria_producto,
+//           id_iva: producto.id_iva,
+//           estado: producto.estado,
+//           categoria_producto: producto.categoria_producto
+//             ? {
+//               id_categoria_producto:
+//                 producto.categoria_producto.id_categoria_producto,
+//               nombre_categoria: producto.categoria_producto.nombre_categoria,
+//             }
+//             : null,
+//           iva: producto.iva
+//             ? {
+//               id_iva: producto.iva.id_iva,
+//               porcentaje: Number(producto.iva.porcentaje),
+//             }
+//             : null,
+//           stock_total,
+//           lotes,
+//         };
+//       })
+//   }
+// }
+
+async findProductosVista(opts: ProductosVistaOpts) {
+  const scope = opts.scope ?? 'active';
+
+  if (scope === 'active') {
+    if (!opts.idBodegaActiva || Number.isNaN(opts.idBodegaActiva)) {
+      throw new BadRequestException(
+        'Bodega activa inválida para consultar productos-vista',
+      );
     }
 
-    const baseWhereExistencias: Prisma.existenciasWhereInput =
-      scope === 'all'
-        ? opts.bodegasPermitidas?.length
-          ? { id_bodega: { in: opts.bodegasPermitidas } }
-          : {}
-        : { id_bodega: opts.idBodegaActiva! };
+    this.assertBodegaAccess(opts.idBodegaActiva, opts.bodegasPermitidas);
+  }
 
-    const whereExistencias: Prisma.existenciasWhereInput = {
-      ...baseWhereExistencias,
-      cantidad: { gt: new Prisma.Decimal(0) },
-    };
+  const baseWhereExistencias: Prisma.existenciasWhereInput =
+    scope === 'all'
+      ? opts.bodegasPermitidas?.length
+        ? { id_bodega: { in: opts.bodegasPermitidas } }
+        : {}
+      : { id_bodega: opts.idBodegaActiva! };
 
-    const productos = await this.prisma.producto.findMany({
-      orderBy: { nombre_producto: 'asc' },
-      include: {
-        categoria_producto: true,
-        iva: true,
-        existencias: {
-          where: whereExistencias,
-          orderBy: [{ fecha_vencimiento: 'asc' }, { lote: 'asc' }],
-          include: {
-            bodega: {
-              select: {
-                id_bodega: true,
-                nombre_bodega: true,
-              },
+  const whereExistencias: Prisma.existenciasWhereInput = {
+    ...baseWhereExistencias,
+    cantidad: { gt: new Prisma.Decimal(0) },
+  };
+
+  const productos = await this.prisma.producto.findMany({
+    orderBy: { nombre_producto: 'asc' },
+    include: {
+      categoria_producto: true,
+      iva: true,
+      existencias: {
+        where: whereExistencias,
+        orderBy: [{ fecha_vencimiento: 'asc' }, { lote: 'asc' }],
+        include: {
+          bodega: {
+            select: {
+              id_bodega: true,
+              nombre_bodega: true,
             },
           },
         },
       },
-    });
+    },
+  });
 
-    return productos
-      .map((producto) => {
-        const lotes = producto.existencias.map((existencia) => ({
-          id_existencia: existencia.id_existencia,
-          lote: existencia.lote,
-          cantidad: Number(existencia.cantidad),
-          fecha_vencimiento: existencia.fecha_vencimiento,
-          id_bodega: existencia.id_bodega,
-          nombre_bodega: existencia.bodega?.nombre_bodega ?? '',
-        }));
+  return Promise.all(
+    productos.map(async (producto) => {
+      const lotes = producto.existencias.map((existencia) => ({
+        id_existencia: existencia.id_existencia,
+        lote: existencia.lote,
+        cantidad: Number(existencia.cantidad),
+        fecha_vencimiento: existencia.fecha_vencimiento,
+        id_bodega: existencia.id_bodega,
+        nombre_bodega: existencia.bodega?.nombre_bodega ?? '',
+      }));
 
-        const stock_total = lotes.reduce(
-          (sum, lote) => sum + Number(lote.cantidad),
-          0,
-        );
+      const stock_total = lotes.reduce(
+        (sum, lote) => sum + Number(lote.cantidad),
+        0,
+      );
 
-        return {
-          id_producto: producto.id_producto,
-          nombre_producto: producto.nombre_producto,
-          descripcion: producto.descripcion,
-          id_categoria_producto: producto.id_categoria_producto,
-          id_iva: producto.id_iva,
-          estado: producto.estado,
-          categoria_producto: producto.categoria_producto
-            ? {
+      const precio_minimo_venta =
+        scope === 'active' && opts.idBodegaActiva
+          ? await this.getPrecioMinimoVentaProducto(
+              Number(producto.id_producto),
+              Number(opts.idBodegaActiva),
+            )
+          : null;
+
+      return {
+        id_producto: producto.id_producto,
+        nombre_producto: producto.nombre_producto,
+        descripcion: producto.descripcion,
+        id_categoria_producto: producto.id_categoria_producto,
+        id_iva: producto.id_iva,
+        estado: producto.estado,
+        categoria_producto: producto.categoria_producto
+          ? {
               id_categoria_producto:
                 producto.categoria_producto.id_categoria_producto,
               nombre_categoria: producto.categoria_producto.nombre_categoria,
             }
-            : null,
-          iva: producto.iva
-            ? {
+          : null,
+        iva: producto.iva
+          ? {
               id_iva: producto.iva.id_iva,
               porcentaje: Number(producto.iva.porcentaje),
             }
-            : null,
-          stock_total,
-          lotes,
-        };
-      })
-  }
+          : null,
+        stock_total,
+        lotes,
+        precio_minimo_venta,
+      };
+    }),
+  );};
 }

@@ -221,6 +221,72 @@ export class RemisionesVentaService {
     return orden;
   }
 
+  private async getPrecioMinimoVentaProducto(
+    db: Prisma.TransactionClient | PrismaService,
+    idProducto: number,
+    idBodega: number,
+  ) {
+    const ultimaRemisionCompra = await db.remision_compra.findFirst({
+      where: {
+        id_bodega: idBodega,
+        detalle_remision_compra: {
+          some: {
+            id_producto: idProducto,
+          },
+        },
+        NOT: {
+          estado_remision_compra: {
+            nombre_estado: {
+              contains: 'anulad',
+            },
+          },
+        },
+      },
+      orderBy: [{ fecha_creacion: 'desc' }, { id_remision_compra: 'desc' }],
+      select: {
+        detalle_remision_compra: {
+          where: {
+            id_producto: idProducto,
+          },
+          orderBy: {
+            id_detalle_remision_compra: 'desc',
+          },
+          take: 1,
+          select: {
+            precio_unitario: true,
+          },
+        },
+      },
+    });
+
+    const precio = Number(
+      ultimaRemisionCompra?.detalle_remision_compra?.[0]?.precio_unitario ?? 0,
+    );
+
+    return precio > 0 ? precio : null;
+  }
+
+  // private async assertPreciosDetalleOrdenValidos(
+  //   db: Prisma.TransactionClient | PrismaService,
+  //   orden: Awaited<ReturnType<RemisionesVentaService['getOrdenAprobada']>>,
+  // ) {
+  //   for (const item of orden.detalle_orden_venta) {
+  //     const precioMinimo = await this.getPrecioMinimoVentaProducto(
+  //       db,
+  //       Number(item.id_producto),
+  //       Number(orden.id_bodega),
+  //     );
+
+  //     if (precioMinimo === null) continue;
+
+  //     if (Number(item.precio_unitario) < Number(precioMinimo)) {
+  //       throw new BadRequestException(
+  //         `El producto "${item.producto?.nombre_producto ?? item.id_producto}" tiene un precio en la orden de venta menor al último precio de ingreso al inventario (${precioMinimo}).`,
+  //       );
+  //     }
+  //   }
+  // }
+
   private buildCantidadesRemitidasPorProducto(
     orden: Awaited<ReturnType<RemisionesVentaService['getOrdenAprobada']>>,
     ignoreRemisionId?: number,
@@ -629,9 +695,58 @@ export class RemisionesVentaService {
     };
   }
 
+  // async create(dto: CreateRemisionVentaDto) {
+  //   return this.prisma.$transaction(async (tx) => {
+  //     const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
+  //     const estadoRemision = await this.assertEstadoRemisionExists(
+  //       tx,
+  //       dto.id_estado_remision_venta,
+  //     );
+
+  //     await this.assertUsuarioExists(tx, dto.id_usuario_creador);
+
+  //     const detalleNormalizado = await this.validarDetalleYExistencias(
+  //       tx,
+  //       orden,
+  //       dto.detalle,
+  //     );
+
+  //     const remision = await tx.remision_venta.create({
+  //       data: {
+  //         fecha_creacion: new Date(dto.fecha_creacion),
+  //         fecha_vencimiento: dto.fecha_vencimiento
+  //           ? new Date(dto.fecha_vencimiento)
+  //           : null,
+  //         observaciones: dto.observaciones ?? null,
+  //         id_orden_venta: dto.id_orden_venta,
+  //         id_cliente: orden.id_cliente,
+  //         id_estado_remision_venta: estadoRemision.id_estado_remision_venta,
+  //         id_usuario_creador: dto.id_usuario_creador,
+  //         id_factura: null,
+  //       },
+  //     });
+
+  //     await this.aplicarDetalleRemision(
+  //       tx,
+  //       remision.id_remision_venta,
+  //       detalleNormalizado,
+  //     );
+
+  //     return tx.remision_venta.update({
+  //       where: { id_remision_venta: remision.id_remision_venta },
+  //       data: {
+  //         codigo_remision_venta: `RMV-${String(remision.id_remision_venta).padStart(4, '0')}`,
+  //       },
+  //       include: this.remisionInclude,
+  //     });
+  //   });
+  // }
+
   async create(dto: CreateRemisionVentaDto) {
     return this.prisma.$transaction(async (tx) => {
       const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
+        // await this.assertPreciosDetalleOrdenValidos(tx, orden);
+
       const estadoRemision = await this.assertEstadoRemisionExists(
         tx,
         dto.id_estado_remision_venta,
@@ -716,7 +831,29 @@ export class RemisionesVentaService {
         );
       }
 
+      // const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
+      // const estadoRemision = await this.assertEstadoRemisionExists(
+      //   tx,
+      //   dto.id_estado_remision_venta,
+      // );
+      // await this.assertUsuarioExists(tx, dto.id_usuario_creador);
+
+      // await this.restaurarInventarioDeRemision(tx, id);
+
+      // await tx.detalle_remision_venta.deleteMany({
+      //   where: { id_remision_venta: id },
+      // });
+
+      // const detalleNormalizado = await this.validarDetalleYExistencias(
+      //   tx,
+      //   orden,
+      //   dto.detalle,
+      //   id,
+      // );
+
       const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
+      // await this.assertPreciosDetalleOrdenValidos(tx, orden);
+
       const estadoRemision = await this.assertEstadoRemisionExists(
         tx,
         dto.id_estado_remision_venta,
@@ -888,3 +1025,4 @@ export class RemisionesVentaService {
     });
   }
 }
+
