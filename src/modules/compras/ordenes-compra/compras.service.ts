@@ -252,6 +252,108 @@ export class ComprasService {
     };
   }
 
+  private async getEstadoRemisionCompraIdByNombre(
+    tx: Prisma.TransactionClient,
+    nombreEstado: string,
+  ) {
+    const estado = await tx.estado_remision_compra.findFirst({
+      where: { nombre_estado: nombreEstado },
+      select: { id_estado_remision_compra: true },
+    });
+
+    if (!estado) {
+      throw new BadRequestException(
+        `No existe el estado de remisión de compra "${nombreEstado}"`,
+      );
+    }
+
+    return estado.id_estado_remision_compra;
+  }
+
+  private async obtenerIdsComprasConPendientes(
+    tx: Prisma.TransactionClient,
+    compraIds: number[],
+  ): Promise<number[]> {
+    if (!compraIds.length) return [];
+
+    const estadoAnulada = await tx.estado_remision_compra.findFirst({
+      where: { nombre_estado: 'Anulada' },
+      select: { id_estado_remision_compra: true },
+    });
+
+    const [detallesCompra, detallesRemision] = await Promise.all([
+      tx.detalle_compra.findMany({
+        where: {
+          id_compra: { in: compraIds },
+        },
+        select: {
+          id_compra: true,
+          id_producto: true,
+          cantidad: true,
+        },
+      }),
+      tx.detalle_remision_compra.findMany({
+        where: {
+          remision_compra: {
+            is: {
+              id_compra: { in: compraIds },
+              ...(estadoAnulada
+                ? {
+                    id_estado_remision_compra: {
+                      not: estadoAnulada.id_estado_remision_compra,
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
+        select: {
+          id_producto: true,
+          cantidad: true,
+          remision_compra: {
+            select: {
+              id_compra: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const compradasMap = new Map<string, number>();
+    const remisionadasMap = new Map<string, number>();
+
+    for (const item of detallesCompra) {
+      const key = `${item.id_compra}-${item.id_producto}`;
+      compradasMap.set(key, (compradasMap.get(key) ?? 0) + Number(item.cantidad));
+    }
+
+    for (const item of detallesRemision) {
+      const idCompra = item.remision_compra?.id_compra;
+      if (!idCompra) continue;
+
+      const key = `${idCompra}-${item.id_producto}`;
+      remisionadasMap.set(
+        key,
+        (remisionadasMap.get(key) ?? 0) + Number(item.cantidad),
+      );
+    }
+
+    const comprasConPendientes = new Set<number>();
+
+    for (const item of detallesCompra) {
+      const key = `${item.id_compra}-${item.id_producto}`;
+      const cantidadComprada = compradasMap.get(key) ?? 0;
+      const cantidadRemisionada = remisionadasMap.get(key) ?? 0;
+      const pendiente = cantidadComprada - cantidadRemisionada;
+
+      if (pendiente > 0.0001) {
+        comprasConPendientes.add(item.id_compra);
+      }
+    }
+
+    return [...comprasConPendientes];
+  }
+
   async create(dto: CreateCompraDto, opts: CreateOpts) {
     const bodegasPermitidas = await this.getBodegasPermitidasUsuario(
       opts.idUsuario,
@@ -311,31 +413,34 @@ export class ComprasService {
       args.idUsuario,
     );
 
-    const whereBase = {
-      ...(args.soloAprobadas ? { id_estado_compra: ESTADO_APROBADA } : {}),
-    };
-
     if (args.idBodegaScope !== undefined) {
       this.assertBodegaAccess(args.idBodegaScope, bodegasPermitidas);
-
-      return this.prisma.compras.findMany({
-        where: {
-          ...whereBase,
-          id_bodega: args.idBodegaScope,
-        },
-        orderBy: { id_compra: 'desc' },
-        select: compraListSelect,
-      });
     }
 
-    return this.prisma.compras.findMany({
+    const compras = await this.prisma.compras.findMany({
       where: {
-        ...whereBase,
-        id_bodega: { in: bodegasPermitidas },
+        ...(args.soloAprobadas ? { id_estado_compra: ESTADO_APROBADA } : {}),
+        ...(args.idBodegaScope !== undefined
+          ? { id_bodega: args.idBodegaScope }
+          : { id_bodega: { in: bodegasPermitidas } }),
       },
       orderBy: { id_compra: 'desc' },
       select: compraListSelect,
     });
+
+    if (!args.soloAprobadas) {
+      return compras;
+    }
+
+    const idsCompras = compras.map((compra) => compra.id_compra);
+
+    const idsComprasConPendientes = await this.prisma.$transaction((tx) =>
+      this.obtenerIdsComprasConPendientes(tx, idsCompras),
+    );
+
+    const permitidasSet = new Set(idsComprasConPendientes);
+
+    return compras.filter((compra) => permitidasSet.has(compra.id_compra));
   }
 
   async findOne(id: number, opts: ScopeOpts) {

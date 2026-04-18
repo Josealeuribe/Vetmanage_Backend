@@ -95,10 +95,6 @@ const compraContextoSelect = Prisma.validator<Prisma.comprasSelect>()({
 export class RemisionesCompraService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // =========================
-  // Helpers generales
-  // =========================
-
   private parseDateOnly(value: string): Date {
     const [year, month, day] = value.split('-').map(Number);
 
@@ -343,10 +339,6 @@ export class RemisionesCompraService {
     return compra;
   }
 
-  // =========================
-  // Endpoints de apoyo al front
-  // =========================
-
   async getSiguienteCodigo(opts: CompraContextoOpts) {
     const bodegasPermitidas = await this.getBodegasPermitidasUsuario(
       opts.idUsuario,
@@ -382,13 +374,28 @@ export class RemisionesCompraService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const compra = await this.getCompraContextoBase(
+      const compraBase = await this.getCompraContextoBase(
         tx,
         idCompra,
         bodegasPermitidas,
       );
 
-      await this.assertCompraAprobada(tx, compra.id_estado_compra);
+      const resumen = await this.obtenerResumenPendienteCompra(
+        tx,
+        idCompra,
+        bodegasPermitidas,
+        compraBase.id_bodega,
+      );
+
+      if (!resumen.tienePendientes) {
+        throw new BadRequestException(
+          'La compra ya fue remisionada completamente y no puede volver a seleccionarse',
+        );
+      }
+
+      const pendientesMap = new Map(
+        resumen.itemsPendientes.map((item) => [item.id_producto, item]),
+      );
 
       const numeroRemisionSugerido = await this.nextCodigoRemisionCompra(
         tx,
@@ -399,49 +406,56 @@ export class RemisionesCompraService {
       return {
         numeroRemisionSugerido,
         compra: {
-          id: compra.id_compra,
-          codigo: compra.codigo_compra,
-          proveedorId: compra.id_proveedor,
-          proveedorNombre: compra.proveedor?.nombre_empresa ?? '',
+          id: compraBase.id_compra,
+          codigo: compraBase.codigo_compra,
+          proveedorId: compraBase.id_proveedor,
+          proveedorNombre: compraBase.proveedor?.nombre_empresa ?? '',
           proveedorTipoDocumento:
-            compra.proveedor?.tipo_documento?.nombre_doc ??
-            String(compra.proveedor?.id_tipo_doc ?? ''),
-          proveedorNumeroDocumento: compra.proveedor?.num_documento ?? '',
-          idBodega: compra.id_bodega,
-          bodegaNombre: compra.bodega?.nombre_bodega ?? '',
-          estadoCompraId: compra.id_estado_compra,
-          estadoCompraNombre: compra.estado_compra?.nombre_estado ?? '',
-          items: compra.detalle_compra.map((item) => {
-            const cantidad = Number(item.cantidad);
-            const precioUnitario = Number(item.precio_unitario);
-            const ivaPorcentaje = Number(item.iva?.porcentaje ?? 0);
+            compraBase.proveedor?.tipo_documento?.nombre_doc ??
+            String(compraBase.proveedor?.id_tipo_doc ?? ''),
+          proveedorNumeroDocumento: compraBase.proveedor?.num_documento ?? '',
+          idBodega: compraBase.id_bodega,
+          bodegaNombre: compraBase.bodega?.nombre_bodega ?? '',
+          estadoCompraId: compraBase.id_estado_compra,
+          estadoCompraNombre: compraBase.estado_compra?.nombre_estado ?? '',
+          items: compraBase.detalle_compra
+            .map((item) => {
+              const pendiente = pendientesMap.get(item.id_producto);
+              const cantidadPendiente = pendiente?.cantidad_pendiente ?? 0;
 
-            return {
-              idProducto: item.id_producto,
-              id_producto: item.id_producto,
-              productoNombre:
-                item.producto?.nombre_producto ?? `Producto ${item.id_producto}`,
-              producto_nombre:
-                item.producto?.nombre_producto ?? `Producto ${item.id_producto}`,
-              cantidad,
-              precioUnitario,
-              precio_unitario: precioUnitario,
-              idIva: item.id_iva,
-              id_iva: item.id_iva,
-              ivaPorcentaje,
-              iva_porcentaje: ivaPorcentaje,
-              codigoBarras: '',
-              codigo_barras: '',
-            };
-          }),
+              if (cantidadPendiente <= 0.0001) {
+                return null;
+              }
+
+              const precioUnitario = Number(item.precio_unitario);
+              const ivaPorcentaje = Number(item.iva?.porcentaje ?? 0);
+
+              return {
+                idProducto: item.id_producto,
+                id_producto: item.id_producto,
+                productoNombre:
+                  item.producto?.nombre_producto ??
+                  `Producto ${item.id_producto}`,
+                producto_nombre:
+                  item.producto?.nombre_producto ??
+                  `Producto ${item.id_producto}`,
+                cantidad: cantidadPendiente,
+                cantidad_pendiente: cantidadPendiente,
+                precioUnitario,
+                precio_unitario: precioUnitario,
+                idIva: item.id_iva,
+                id_iva: item.id_iva,
+                ivaPorcentaje,
+                iva_porcentaje: ivaPorcentaje,
+                codigoBarras: '',
+                codigo_barras: '',
+              };
+            })
+            .filter(Boolean),
         },
       };
     });
   }
-
-  // =========================
-  // Validaciones base
-  // =========================
 
   private async validarCompraYAcceso(
     tx: Prisma.TransactionClient,
@@ -691,6 +705,60 @@ export class RemisionesCompraService {
     return cantidades;
   }
 
+  private async obtenerResumenPendienteCompra(
+    tx: Prisma.TransactionClient,
+    idCompra: number,
+    bodegasPermitidas: number[],
+    idBodegaEsperada?: number,
+    excludeRemisionId?: number,
+  ) {
+    const compra = await this.validarCompraYAcceso(
+      tx,
+      idCompra,
+      bodegasPermitidas,
+      idBodegaEsperada,
+    );
+
+    await this.assertCompraAprobada(tx, compra.id_estado_compra);
+
+    const cantidadesYaRemisionadas =
+      await this.obtenerCantidadesYaRemisionadasPorCompra(
+        tx,
+        idCompra,
+        excludeRemisionId,
+      );
+
+    const itemsPendientes = compra.detalle_compra.map((item) => {
+      const cantidadComprada = Number(item.cantidad);
+      const cantidadYaRemisionada =
+        cantidadesYaRemisionadas.get(item.id_producto) ?? 0;
+
+      const cantidadPendiente = Math.max(
+        cantidadComprada - cantidadYaRemisionada,
+        0,
+      );
+
+      return {
+        id_producto: item.id_producto,
+        cantidad_comprada: cantidadComprada,
+        cantidad_ya_remisionada: cantidadYaRemisionada,
+        cantidad_pendiente: cantidadPendiente,
+        precio_unitario: Number(item.precio_unitario),
+        id_iva: item.id_iva,
+      };
+    });
+
+    const tienePendientes = itemsPendientes.some(
+      (item) => item.cantidad_pendiente > 0.0001,
+    );
+
+    return {
+      compra,
+      itemsPendientes,
+      tienePendientes,
+    };
+  }
+
   private validarCantidadesContraCompra(
     compra: Awaited<
       ReturnType<RemisionesCompraService['validarCompraYAcceso']>
@@ -781,10 +849,6 @@ export class RemisionesCompraService {
     }
   }
 
-  // =========================
-  // CRUD / acciones
-  // =========================
-
   async create(dto: CreateRemisionCompraDto, opts: CreateOpts) {
     const bodegasPermitidas = await this.getBodegasPermitidasUsuario(
       opts.idUsuario,
@@ -815,6 +879,20 @@ export class RemisionesCompraService {
       );
 
       await this.assertCompraAprobada(tx, compra.id_estado_compra);
+
+      const resumenPendiente = await this.obtenerResumenPendienteCompra(
+        tx,
+        dto.id_compra,
+        bodegasPermitidas,
+        dto.id_bodega,
+      );
+
+      if (!resumenPendiente.tienePendientes) {
+        throw new BadRequestException(
+          'La compra ya fue remisionada completamente y no puede generar nuevas remisiones',
+        );
+      }
+
       await this.validarProveedor(tx, dto.id_proveedor);
       await this.validarFactura(tx, dto.id_factura);
       await this.validarEstadoRemision(tx, ESTADO_PENDIENTE);
@@ -1005,6 +1083,20 @@ export class RemisionesCompraService {
         this.validarDetalleSinDuplicados(dto.detalle_remision_compra);
         this.validarDetalleContraCompra(compra, dto.detalle_remision_compra);
 
+        const resumenPendiente = await this.obtenerResumenPendienteCompra(
+          tx,
+          actual.id_compra,
+          bodegasPermitidas,
+          actual.id_bodega ?? undefined,
+          id,
+        );
+
+        if (!resumenPendiente.tienePendientes) {
+          throw new BadRequestException(
+            'La compra ya fue remisionada completamente y no puede modificarse esta remisión con nuevas cantidades',
+          );
+        }
+
         const cantidadesYaRemisionadas =
           await this.obtenerCantidadesYaRemisionadasPorCompra(
             tx,
@@ -1077,7 +1169,7 @@ export class RemisionesCompraService {
       await this.validarEstadoRemision(tx, dto.id_estado_remision_compra);
 
       const ESTADO_PENDIENTE = await this.getEstadoIdByNombre(tx, 'Pendiente');
-      const ESTADO_APLICADA = await this.getEstadoIdByNombre(tx, 'Aprobada');
+      const ESTADO_APROBADA = await this.getEstadoIdByNombre(tx, 'Aprobada');
       const ESTADO_ANULADA = await this.getEstadoIdByNombre(tx, 'Anulada');
 
       if (dto.id_estado_remision_compra === actual.id_estado_remision_compra) {
@@ -1091,11 +1183,11 @@ export class RemisionesCompraService {
       }
 
       if (
-        actual.id_estado_remision_compra === ESTADO_APLICADA ||
+        actual.id_estado_remision_compra === ESTADO_APROBADA ||
         actual.afecta_existencias
       ) {
         throw new BadRequestException(
-          'La remisión ya fue aplicada y no puede anularse ni cambiar de estado',
+          'La remisión ya fue aprobada y no puede anularse ni cambiar de estado',
         );
       }
 
@@ -1118,7 +1210,7 @@ export class RemisionesCompraService {
         });
       }
 
-      if (dto.id_estado_remision_compra === ESTADO_APLICADA) {
+      if (dto.id_estado_remision_compra === ESTADO_APROBADA) {
         if (actual.id_bodega === null) {
           throw new BadRequestException(
             'La remisión no tiene una bodega asociada para aplicar existencias',
@@ -1142,7 +1234,7 @@ export class RemisionesCompraService {
         return tx.remision_compra.update({
           where: { id_remision_compra: id },
           data: {
-            id_estado_remision_compra: ESTADO_APLICADA,
+            id_estado_remision_compra: ESTADO_APROBADA,
             afecta_existencias: true,
             fecha_aplicacion_existencias: new Date(),
             id_usuario_aplico_existencias: opts.idUsuario,
@@ -1152,7 +1244,7 @@ export class RemisionesCompraService {
       }
 
       throw new BadRequestException(
-        'Desde pendiente solo puedes pasar la remisión a Aplicada o Anulada',
+        'Desde pendiente solo puedes pasar la remisión a Aprobada o Anulada',
       );
     });
   }
