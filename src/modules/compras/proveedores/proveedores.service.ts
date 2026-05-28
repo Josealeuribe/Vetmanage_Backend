@@ -10,27 +10,52 @@ import { UpdateProveedorDto } from './dto/update-proveedor.dto';
 import { ListProveedorQueryDto } from './dto/list-proveedor.query.dto';
 import { proveedorSelect } from './selects/proveedor.select';
 
+const proveedorIncludeRefs = Prisma.validator<Prisma.proveedorInclude>()({
+  municipios: {
+    select: {
+      id_municipio: true,
+      nombre_municipio: true,
+      id_departamento: true,
+      departamentos: {
+        select: {
+          id_departamento: true,
+          nombre_departamento: true,
+          id_pais: true,
+          paises: {
+            select: {
+              id_pais: true,
+              nombre_pais: true,
+            },
+          },
+        },
+      },
+    },
+  },
+  tipo_documento: true,
+  tipo_proveedor: true,
+});
+
 export type ProveedorPayload = Prisma.proveedorGetPayload<{
   select: typeof proveedorSelect;
 }>;
 
 export type ProveedorWithRefs = Prisma.proveedorGetPayload<{
-  include: { municipios: true; tipo_documento: true; tipo_proveedor: true };
+  include: typeof proveedorIncludeRefs;
 }>;
 
 export type ProveedoresFindAllResponse =
   | ProveedorPayload[]
   | {
-      page: number;
-      limit: number;
-      total: number;
-      pages: number;
-      data: (ProveedorPayload | ProveedorWithRefs)[];
-    };
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    data: (ProveedorPayload | ProveedorWithRefs)[];
+  };
 
 @Injectable()
 export class ProveedoresService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private normalizeStr(value?: string | null): string | null {
     const normalized = value?.trim();
@@ -91,7 +116,7 @@ export class ProveedoresService {
     if (!exists) throw new BadRequestException('id_tipo_proveedor no existe');
   }
 
-  async create(dto: CreateProveedorDto): Promise<ProveedorPayload> {
+  async create(dto: CreateProveedorDto): Promise<ProveedorWithRefs> {
     await this.assertMunicipioExists(dto.id_municipio);
     await this.assertTipoDocExists(dto.id_tipo_doc);
     await this.assertTipoProveedorExists(dto.id_tipo_proveedor);
@@ -114,7 +139,7 @@ export class ProveedoresService {
         id_municipio: dto.id_municipio,
         estado: dto.estado ?? true,
       },
-      select: proveedorSelect,
+      include: proveedorIncludeRefs,
     });
   }
 
@@ -150,11 +175,7 @@ export class ProveedoresService {
         return this.prisma.proveedor.findMany({
           where,
           orderBy: { id_proveedor: 'desc' },
-          include: {
-            municipios: true,
-            tipo_documento: true,
-            tipo_proveedor: true,
-          },
+          include: proveedorIncludeRefs,
         });
       }
 
@@ -177,11 +198,7 @@ export class ProveedoresService {
           skip,
           take: limit,
           orderBy: { id_proveedor: 'desc' },
-          include: {
-            municipios: true,
-            tipo_documento: true,
-            tipo_proveedor: true,
-          },
+          include: proveedorIncludeRefs,
         }),
       ]);
 
@@ -206,13 +223,13 @@ export class ProveedoresService {
     if (includeRefs) {
       const proveedor = await this.prisma.proveedor.findUnique({
         where: { id_proveedor: id },
-        include: {
-          municipios: true,
-          tipo_documento: true,
-          tipo_proveedor: true,
-        },
+        include: proveedorIncludeRefs,
       });
-      if (!proveedor) throw new NotFoundException('Proveedor no encontrado');
+
+      if (!proveedor) {
+        throw new NotFoundException('Proveedor no encontrado');
+      }
+
       return proveedor;
     }
 
@@ -220,11 +237,15 @@ export class ProveedoresService {
       where: { id_proveedor: id },
       select: proveedorSelect,
     });
-    if (!proveedor) throw new NotFoundException('Proveedor no encontrado');
+
+    if (!proveedor) {
+      throw new NotFoundException('Proveedor no encontrado');
+    }
+
     return proveedor;
   }
 
-  async update(id: number, dto: UpdateProveedorDto): Promise<ProveedorPayload> {
+  async update(id: number, dto: UpdateProveedorDto): Promise<ProveedorWithRefs> {
     const exists = await this.prisma.proveedor.findUnique({
       where: { id_proveedor: id },
       select: { id_proveedor: true },
@@ -253,23 +274,23 @@ export class ProveedoresService {
         id_municipio: dto.id_municipio,
         estado: dto.estado,
       },
-      select: proveedorSelect,
+      include: proveedorIncludeRefs,
     });
   }
 
-  async disable(id: number): Promise<ProveedorPayload> {
+  async disable(id: number): Promise<ProveedorWithRefs> {
     return this.prisma.proveedor.update({
       where: { id_proveedor: id },
       data: { estado: false },
-      select: proveedorSelect,
+      include: proveedorIncludeRefs,
     });
   }
 
-  async enable(id: number): Promise<ProveedorPayload> {
+  async enable(id: number): Promise<ProveedorWithRefs> {
     return this.prisma.proveedor.update({
       where: { id_proveedor: id },
       data: { estado: true },
-      select: proveedorSelect,
+      include: proveedorIncludeRefs,
     });
   }
 }

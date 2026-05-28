@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ExistenciasModule } from './modules/existencias/existencias.module';
+import { PaisesModule } from './modules/existencias/bodegas/paises/paises.module';
 import { DepartamentosModule } from './modules/existencias/bodegas/departamentos/departamentos.module';
 import { MunicipiosModule } from './modules/existencias/bodegas/municipios/municipios.module';
 import { ComprasModule } from './modules/compras/compras.module';
@@ -26,6 +27,7 @@ import { NotificacionesModule } from './modules/notificaciones/notificaciones.mo
     PermisosModule,
     AuthModule,
     ExistenciasModule,
+    PaisesModule,
     DepartamentosModule,
     MunicipiosModule,
     ComprasModule,
