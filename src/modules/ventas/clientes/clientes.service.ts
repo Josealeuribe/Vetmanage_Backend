@@ -9,6 +9,24 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
 
+const clienteIncludeRefs = Prisma.validator<Prisma.clienteInclude>()({
+  tipo_documento: true,
+  tipo_cliente: true,
+  municipios: {
+    select: {
+      id_municipio: true,
+      nombre_municipio: true,
+      id_departamento: true,
+      departamentos: {
+        select: {
+          id_departamento: true,
+          nombre_departamento: true,
+        },
+      },
+    },
+  },
+});
+
 // --------- Prisma error helpers (compatibles con cualquier versión) ----------
 type PrismaErrorLike = { code?: unknown; meta?: unknown };
 
@@ -113,11 +131,7 @@ export class ClientesService {
             id_tipo_doc: dto.id_tipo_doc,
             estado: dto.estado ?? true,
           },
-          include: {
-            tipo_documento: true,
-            tipo_cliente: true,
-            municipios: true,
-          },
+          include: clienteIncludeRefs,
         });
       } catch (e: unknown) {
         if (isP2002(e)) {
@@ -158,11 +172,7 @@ export class ClientesService {
     return this.prisma.cliente.findMany({
       where,
       orderBy: { id_cliente: 'desc' },
-      include: {
-        tipo_documento: true,
-        tipo_cliente: true,
-        municipios: true,
-      },
+      include: clienteIncludeRefs,
     });
   }
 
@@ -170,11 +180,7 @@ export class ClientesService {
   async findOne(id_cliente: number) {
     const c = await this.prisma.cliente.findUnique({
       where: { id_cliente },
-      include: {
-        tipo_documento: true,
-        tipo_cliente: true,
-        municipios: true,
-      },
+      include: clienteIncludeRefs,
     });
 
     if (!c) throw new NotFoundException('Cliente no encontrado');
@@ -227,11 +233,7 @@ export class ClientesService {
       return await this.prisma.cliente.update({
         where: { id_cliente },
         data,
-        include: {
-          tipo_documento: true,
-          tipo_cliente: true,
-          municipios: true,
-        },
+        include: clienteIncludeRefs,
       });
     } catch (e: unknown) {
       if (isP2002(e)) {
