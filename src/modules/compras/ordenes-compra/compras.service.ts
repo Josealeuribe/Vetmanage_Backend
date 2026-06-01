@@ -22,10 +22,24 @@ type UpdateOpts = {
   idUsuario: number;
 };
 
-type FindAllArgs = {
-  idUsuario: number;
-  idBodegaScope?: number;
-  soloAprobadas?: boolean;
+type DetalleCompraInput = Array<{
+  id_producto: number;
+  cantidad: number | string | Prisma.Decimal;
+  precio_unitario: number | string | Prisma.Decimal;
+}>;
+
+type DetalleCompraConIva = Array<{
+  id_producto: number;
+  cantidad: number | string | Prisma.Decimal;
+  precio_unitario: number | string | Prisma.Decimal;
+  id_iva: number;
+}>;
+
+type CompraReferenciaDto = {
+  id_proveedor?: number;
+  id_termino_pago?: number;
+  id_estado_compra?: number;
+  detalle?: DetalleCompraInput;
 };
 
 const ESTADO_PENDIENTE = 1;
@@ -34,7 +48,7 @@ const ESTADO_ANULADA = 3;
 
 @Injectable()
 export class ComprasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async getBodegasPermitidasUsuario(
     idUsuario: number,
@@ -105,6 +119,62 @@ export class ComprasService {
     }
   }
 
+  private async resolverDetalleConIvaDelProducto(
+    tx: Prisma.TransactionClient,
+    detalle: DetalleCompraInput,
+  ): Promise<DetalleCompraConIva> {
+    const productoIds = [...new Set(detalle.map((item) => item.id_producto))];
+
+    const productos = await tx.producto.findMany({
+      where: {
+        id_producto: {
+          in: productoIds,
+        },
+      },
+      select: {
+        id_producto: true,
+        id_iva: true,
+        nombre_producto: true,
+        iva: {
+          select: {
+            id_iva: true,
+            porcentaje: true,
+          },
+        },
+      },
+    });
+
+    if (productos.length !== productoIds.length) {
+      const encontrados = new Set(productos.map((p) => p.id_producto));
+      const faltantes = productoIds.filter((id) => !encontrados.has(id));
+
+      throw new BadRequestException(
+        `Productos inválidos: ${faltantes.join(', ')}`,
+      );
+    }
+
+    const productoMap = new Map(productos.map((p) => [p.id_producto, p]));
+
+    return detalle.map((item) => {
+      const producto = productoMap.get(item.id_producto);
+
+      if (!producto) {
+        throw new BadRequestException(`Producto inválido: ${item.id_producto}`);
+      }
+
+      if (!producto.id_iva || !producto.iva) {
+        throw new BadRequestException(
+          `El producto "${producto.nombre_producto}" no tiene IVA configurado`,
+        );
+      }
+
+      return {
+        ...item,
+        id_iva: producto.id_iva,
+      };
+    });
+  }
+
   private async nextCodigoCompra(
     tx: Prisma.TransactionClient,
     prefix = 'OC',
@@ -125,7 +195,7 @@ export class ComprasService {
 
   private async validarReferencias(
     tx: Prisma.TransactionClient,
-    dto: Partial<CreateCompraDto> & { id_estado_compra?: number },
+    dto: CompraReferenciaDto,
     idBodega: number,
   ) {
     const bodega = await tx.bodega.findUnique({
@@ -176,16 +246,10 @@ export class ComprasService {
 
     if (dto.detalle?.length) {
       const productoIds = [...new Set(dto.detalle.map((d) => d.id_producto))];
-      const ivaIds = [...new Set(dto.detalle.map((d) => d.id_iva))];
 
       const productos = await tx.producto.findMany({
         where: { id_producto: { in: productoIds } },
         select: { id_producto: true },
-      });
-
-      const ivas = await tx.iva.findMany({
-        where: { id_iva: { in: ivaIds } },
-        select: { id_iva: true },
       });
 
       if (productos.length !== productoIds.length) {
@@ -196,19 +260,12 @@ export class ComprasService {
           `Productos inválidos: ${faltantes.join(', ')}`,
         );
       }
-
-      if (ivas.length !== ivaIds.length) {
-        const encontrados = new Set(ivas.map((i) => i.id_iva));
-        const faltantes = ivaIds.filter((id) => !encontrados.has(id));
-
-        throw new BadRequestException(`IVA inválidos: ${faltantes.join(', ')}`);
-      }
     }
   }
 
   private async calcularTotales(
     tx: Prisma.TransactionClient,
-    detalle: CreateCompraDto['detalle'],
+    detalle: DetalleCompraConIva,
   ) {
     const ivaIds = [...new Set(detalle.map((d) => d.id_iva))];
 
@@ -218,6 +275,7 @@ export class ComprasService {
     });
 
     const ivaMap = new Map<number, Prisma.Decimal>();
+
     for (const iva of ivas) {
       ivaMap.set(iva.id_iva, iva.porcentaje);
     }
@@ -231,6 +289,7 @@ export class ComprasService {
       const lineSub = qty.mul(price);
 
       const pct = ivaMap.get(item.id_iva);
+
       if (!pct) {
         throw new BadRequestException(`IVA inválido: ${item.id_iva}`);
       }
@@ -250,24 +309,6 @@ export class ComprasService {
       total_iva: r2(totalIva),
       total: r2(total),
     };
-  }
-
-  private async getEstadoRemisionCompraIdByNombre(
-    tx: Prisma.TransactionClient,
-    nombreEstado: string,
-  ) {
-    const estado = await tx.estado_remision_compra.findFirst({
-      where: { nombre_estado: nombreEstado },
-      select: { id_estado_remision_compra: true },
-    });
-
-    if (!estado) {
-      throw new BadRequestException(
-        `No existe el estado de remisión de compra "${nombreEstado}"`,
-      );
-    }
-
-    return estado.id_estado_remision_compra;
   }
 
   private async obtenerIdsComprasConPendientes(
@@ -299,10 +340,10 @@ export class ComprasService {
               id_compra: { in: compraIds },
               ...(estadoAnulada
                 ? {
-                    id_estado_remision_compra: {
-                      not: estadoAnulada.id_estado_remision_compra,
-                    },
-                  }
+                  id_estado_remision_compra: {
+                    not: estadoAnulada.id_estado_remision_compra,
+                  },
+                }
                 : {}),
             },
           },
@@ -329,6 +370,7 @@ export class ComprasService {
 
     for (const item of detallesRemision) {
       const idCompra = item.remision_compra?.id_compra;
+
       if (!idCompra) continue;
 
       const key = `${idCompra}-${item.id_producto}`;
@@ -367,10 +409,22 @@ export class ComprasService {
     this.assertDetalleSinDuplicados(dto.detalle);
 
     return this.prisma.$transaction(async (tx) => {
-      await this.validarReferencias(tx, dto, idBodegaFinal!);
+      const detalleConIva = await this.resolverDetalleConIvaDelProducto(
+        tx,
+        dto.detalle,
+      );
+
+      await this.validarReferencias(
+        tx,
+        {
+          ...dto,
+          detalle: detalleConIva,
+        },
+        idBodegaFinal!,
+      );
 
       const codigo_compra = await this.nextCodigoCompra(tx, 'OC', 4);
-      const totales = await this.calcularTotales(tx, dto.detalle);
+      const totales = await this.calcularTotales(tx, detalleConIva);
 
       const compra = await tx.compras.create({
         data: {
@@ -389,7 +443,7 @@ export class ComprasService {
           id_usuario_creador: opts.idUsuario,
           id_bodega: idBodegaFinal!,
           detalle_compra: {
-            create: dto.detalle.map((d) => ({
+            create: detalleConIva.map((d) => ({
               id_producto: d.id_producto,
               cantidad: new Prisma.Decimal(d.cantidad),
               precio_unitario: new Prisma.Decimal(d.precio_unitario),
@@ -491,9 +545,21 @@ export class ComprasService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      let detalleConIva: DetalleCompraConIva | null = null;
+
+      if (dto.detalle?.length) {
+        detalleConIva = await this.resolverDetalleConIvaDelProducto(
+          tx,
+          dto.detalle,
+        );
+      }
+
       await this.validarReferencias(
         tx,
-        dto as Partial<CreateCompraDto> & { id_estado_compra?: number },
+        {
+          ...dto,
+          detalle: detalleConIva ?? undefined,
+        },
         idBodegaFinal!,
       );
 
@@ -503,15 +569,15 @@ export class ComprasService {
         total: Prisma.Decimal;
       } | null = null;
 
-      if (dto.detalle?.length) {
-        totales = await this.calcularTotales(tx, dto.detalle);
+      if (detalleConIva?.length) {
+        totales = await this.calcularTotales(tx, detalleConIva);
 
         await tx.detalle_compra.deleteMany({
           where: { id_compra: id },
         });
 
         await tx.detalle_compra.createMany({
-          data: dto.detalle.map((d) => ({
+          data: detalleConIva.map((d) => ({
             id_compra: id,
             id_producto: d.id_producto,
             cantidad: new Prisma.Decimal(d.cantidad),
@@ -534,10 +600,10 @@ export class ComprasService {
           id_estado_compra: dto.id_estado_compra ?? undefined,
           ...(totales
             ? {
-                subtotal: totales.subtotal,
-                total_iva: totales.total_iva,
-                total: totales.total,
-              }
+              subtotal: totales.subtotal,
+              total_iva: totales.total_iva,
+              total: totales.total,
+            }
             : {}),
         },
         select: compraDetailSelect,
