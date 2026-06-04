@@ -79,7 +79,6 @@ model compras {
   subtotal           Decimal           @default(0.00) @db.Decimal(14, 2)
   total_iva          Decimal           @default(0.00) @db.Decimal(14, 2)
   total              Decimal           @default(0.00) @db.Decimal(14, 2)
-  fecha_entrega      DateTime?         @db.Date
   id_estado_compra   Int               @db.UnsignedInt
   id_usuario_creador Int               @db.UnsignedInt
   id_bodega          Int               @db.UnsignedInt
@@ -445,26 +444,25 @@ model remision_compra {
   id_remision_compra                                             Int                       @id @default(autoincrement()) @db.UnsignedInt
   codigo_remision_compra                                         String                    @unique(map: "codigo_remision_compra") @db.VarChar(20)
   fecha_creacion                                                 DateTime                  @db.Date
-  fecha_vencimiento                                              DateTime?                 @db.Date
   observaciones                                                  String?                   @db.VarChar(255)
   id_compra                                                      Int                       @db.UnsignedInt
   id_proveedor                                                   Int                       @db.UnsignedInt
   id_estado_remision_compra                                      Int                       @db.UnsignedInt
   id_usuario_creador                                             Int                       @db.UnsignedInt
-  id_factura                                                     Int?                      @db.UnsignedInt
-  firma_digital                                                  Bytes?
-  nombre_firmante                                                String?                   @db.VarChar(150)
-  fecha_firma                                                    DateTime?                 @db.DateTime(0)
+  codigo_factura                                                 String?                   @db.VarChar(50)
   afecta_existencias                                             Boolean                   @default(false)
   fecha_aplicacion_existencias                                   DateTime?                 @db.DateTime(0)
   id_usuario_aplico_existencias                                  Int?                      @db.UnsignedInt
   id_bodega                                                      Int?                      @db.UnsignedInt
+  fecha_anulacion                                                DateTime?                 @db.DateTime(0)
+  id_usuario_anulo                                               Int?                      @db.UnsignedInt
   detalle_remision_compra                                        detalle_remision_compra[]
   bodega                                                         bodega?                   @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_remision_compra_bodega")
   compras                                                        compras                   @relation(fields: [id_compra], references: [id_compra], onDelete: NoAction, map: "fk_remision_compra_compra")
   estado_remision_compra                                         estado_remision_compra    @relation(fields: [id_estado_remision_compra], references: [id_estado_remision_compra], onDelete: NoAction, map: "fk_remision_compra_estado")
   proveedor                                                      proveedor                 @relation(fields: [id_proveedor], references: [id_proveedor], onDelete: NoAction, map: "fk_remision_compra_proveedor")
   usuario                                                        usuario                   @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_remision_compra_usuario")
+  usuario_anulo                                                  usuario?                  @relation("remision_compra_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_remision_compra_usuario_anulo")
   usuario_remision_compra_id_usuario_aplico_existenciasTousuario usuario?                  @relation("remision_compra_id_usuario_aplico_existenciasTousuario", fields: [id_usuario_aplico_existencias], references: [id_usuario], onDelete: NoAction, map: "fk_remision_compra_usuario_aplico_existencias")
 
   @@index([id_estado_remision_compra], map: "fk_remision_compra_estado")
@@ -474,6 +472,7 @@ model remision_compra {
   @@index([fecha_creacion], map: "idx_remision_compra_fecha")
   @@index([id_bodega], map: "idx_remision_compra_bodega")
   @@index([id_usuario_aplico_existencias], map: "idx_remision_compra_usuario_aplico_existencias")
+  @@index([id_usuario_anulo], map: "idx_remision_compra_usuario_anulo")
 }
 
 model remision_venta {
@@ -594,6 +593,7 @@ model usuario {
   orden_venta                                                            orden_venta[]
   password_setup_tokens                                                  password_setup_token[]
   remision_compra                                                        remision_compra[]
+  remision_compra_usuario_anulo                                          remision_compra[]      @relation("remision_compra_id_usuario_anuloTousuario")
   remision_compra_remision_compra_id_usuario_aplico_existenciasTousuario remision_compra[]      @relation("remision_compra_id_usuario_aplico_existenciasTousuario")
   remision_venta                                                         remision_venta[]
   traslado                                                               traslado[]

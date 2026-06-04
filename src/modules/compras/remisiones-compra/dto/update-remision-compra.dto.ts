@@ -1,7 +1,6 @@
 import {
   ArrayMinSize,
   IsArray,
-  IsDateString,
   IsInt,
   IsOptional,
   IsString,
@@ -14,14 +13,10 @@ import { CreateDetalleRemisionCompraDto } from './detalle-remision-item.dto';
 
 export class UpdateRemisionCompraDto {
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  id_factura?: number;
-
-  @IsOptional()
-  @IsDateString()
-  fecha_vencimiento?: string | null;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(50)
+  codigo_factura?: string;
 
   @IsOptional()
   @Transform(({ value }) =>

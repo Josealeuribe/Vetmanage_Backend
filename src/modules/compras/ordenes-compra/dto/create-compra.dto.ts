@@ -2,7 +2,6 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
-  IsDateString,
   IsInt,
   IsOptional,
   IsString,
@@ -33,10 +32,6 @@ export class CreateCompraDto {
   @IsString()
   @MaxLength(5000)
   descripcion?: string;
-
-  @IsOptional()
-  @IsDateString()
-  fecha_entrega?: string;
 
   @IsArray()
   @ArrayMinSize(1)

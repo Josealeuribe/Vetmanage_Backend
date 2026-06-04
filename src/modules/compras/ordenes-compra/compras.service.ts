@@ -91,16 +91,6 @@ export class ComprasService {
     }
   }
 
-  private parseDateOnly(value: string): Date {
-    const [year, month, day] = value.split('-').map(Number);
-
-    if (!year || !month || !day) {
-      throw new BadRequestException(`Fecha inválida: ${value}`);
-    }
-
-    return new Date(year, month - 1, day, 12, 0, 0);
-  }
-
   private getHoyDateOnly(): Date {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
@@ -436,9 +426,6 @@ export class ComprasService {
           subtotal: totales.subtotal,
           total_iva: totales.total_iva,
           total: totales.total,
-          fecha_entrega: dto.fecha_entrega
-            ? this.parseDateOnly(dto.fecha_entrega)
-            : null,
           id_estado_compra: ESTADO_PENDIENTE,
           id_usuario_creador: opts.idUsuario,
           id_bodega: idBodegaFinal!,
@@ -594,9 +581,6 @@ export class ComprasService {
           id_proveedor: dto.id_proveedor ?? undefined,
           id_termino_pago: dto.id_termino_pago ?? undefined,
           descripcion: dto.descripcion ?? undefined,
-          fecha_entrega: dto.fecha_entrega
-            ? this.parseDateOnly(dto.fecha_entrega)
-            : undefined,
           id_estado_compra: dto.id_estado_compra ?? undefined,
           ...(totales
             ? {

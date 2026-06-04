@@ -93,7 +93,7 @@ const compraContextoSelect = Prisma.validator<Prisma.comprasSelect>()({
 
 @Injectable()
 export class RemisionesCompraService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private parseDateOnly(value: string): Date {
     const [year, month, day] = value.split('-').map(Number);
@@ -112,6 +112,28 @@ export class RemisionesCompraService {
     );
   }
 
+  private normalizeCodigoFactura(value?: string | null): string | null {
+    if (value === null || value === undefined) return null;
+
+    const codigo = String(value).trim();
+
+    if (!codigo) return null;
+
+    if (codigo.length > 50) {
+      throw new BadRequestException(
+        'El código de factura no puede superar 50 caracteres',
+      );
+    }
+
+    if (!/^[a-zA-Z0-9\s._\-/#]+$/.test(codigo)) {
+      throw new BadRequestException(
+        'El código de factura solo permite letras, números, espacios, punto, guion, guion bajo, / y #',
+      );
+    }
+
+    return codigo;
+  }
+
   private async getBodegasPermitidasUsuario(
     idUsuario: number,
     bodegasPermitidas?: number[],
@@ -119,8 +141,8 @@ export class RemisionesCompraService {
   ) {
     const desdeToken = Array.isArray(bodegasPermitidas)
       ? bodegasPermitidas
-          .map(Number)
-          .filter((n) => Number.isInteger(n) && n > 0)
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0)
       : [];
 
     if (desdeToken.length > 0) {
@@ -511,22 +533,6 @@ export class RemisionesCompraService {
     }
   }
 
-  private async validarFactura(
-    tx: Prisma.TransactionClient,
-    idFactura?: number | null,
-  ) {
-    if (!idFactura) return;
-
-    const factura = await tx.factura.findUnique({
-      where: { id_factura: idFactura },
-      select: { id_factura: true },
-    });
-
-    if (!factura) {
-      throw new BadRequestException(`Factura inválida: ${idFactura}`);
-    }
-  }
-
   private async validarEstadoRemision(
     tx: Prisma.TransactionClient,
     idEstado: number,
@@ -679,10 +685,10 @@ export class RemisionesCompraService {
               : {}),
             ...(estadoAnulada
               ? {
-                  id_estado_remision_compra: {
-                    not: estadoAnulada.id_estado_remision_compra,
-                  },
-                }
+                id_estado_remision_compra: {
+                  not: estadoAnulada.id_estado_remision_compra,
+                },
+              }
               : {}),
           },
         },
@@ -772,7 +778,7 @@ export class RemisionesCompraService {
       cantidadNuevaPorProducto.set(
         item.id_producto,
         (cantidadNuevaPorProducto.get(item.id_producto) ?? 0) +
-          Number(item.cantidad),
+        Number(item.cantidad),
       );
     }
 
@@ -894,7 +900,6 @@ export class RemisionesCompraService {
       }
 
       await this.validarProveedor(tx, dto.id_proveedor);
-      await this.validarFactura(tx, dto.id_factura);
       await this.validarEstadoRemision(tx, ESTADO_PENDIENTE);
       await this.validarProductosEIvas(tx, dto.detalle_remision_compra);
 
@@ -934,19 +939,18 @@ export class RemisionesCompraService {
         data: {
           codigo_remision_compra,
           fecha_creacion: this.getHoyDateOnly(),
-          fecha_vencimiento: dto.fecha_vencimiento
-            ? this.parseDateOnly(dto.fecha_vencimiento)
-            : null,
           observaciones: dto.observaciones ?? null,
           id_compra: dto.id_compra,
           id_proveedor: dto.id_proveedor,
           id_bodega: dto.id_bodega,
           id_estado_remision_compra: ESTADO_PENDIENTE,
           id_usuario_creador: opts.idUsuario,
-          id_factura: dto.id_factura ?? null,
+          codigo_factura: this.normalizeCodigoFactura(dto.codigo_factura),
           afecta_existencias: false,
           fecha_aplicacion_existencias: null,
           id_usuario_aplico_existencias: null,
+          fecha_anulacion: null,
+          id_usuario_anulo: null,
           detalle_remision_compra: {
             create: dto.detalle_remision_compra.map((d) => ({
               id_producto: d.id_producto,
@@ -1065,10 +1069,6 @@ export class RemisionesCompraService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      if (dto.id_factura !== undefined) {
-        await this.validarFactura(tx, dto.id_factura);
-      }
-
       if (dto.detalle_remision_compra?.length) {
         const compra = await this.validarCompraYAcceso(
           tx,
@@ -1136,13 +1136,10 @@ export class RemisionesCompraService {
         data: {
           observaciones:
             dto.observaciones !== undefined ? dto.observaciones : undefined,
-          fecha_vencimiento:
-            dto.fecha_vencimiento !== undefined
-              ? dto.fecha_vencimiento
-                ? this.parseDateOnly(dto.fecha_vencimiento)
-                : null
+          codigo_factura:
+            dto.codigo_factura !== undefined
+              ? this.normalizeCodigoFactura(dto.codigo_factura)
               : undefined,
-          id_factura: dto.id_factura !== undefined ? dto.id_factura : undefined,
         },
         select: remisionCompraDetailSelect,
       });
@@ -1203,8 +1200,14 @@ export class RemisionesCompraService {
           data: {
             id_estado_remision_compra: ESTADO_ANULADA,
             afecta_existencias: false,
+
+            // Se limpia aprobación/aplicación de existencias
             fecha_aplicacion_existencias: null,
             id_usuario_aplico_existencias: null,
+
+            // Se guarda evidencia de anulación
+            fecha_anulacion: new Date(),
+            id_usuario_anulo: opts.idUsuario,
           },
           select: remisionCompraDetailSelect,
         });
@@ -1238,6 +1241,8 @@ export class RemisionesCompraService {
             afecta_existencias: true,
             fecha_aplicacion_existencias: new Date(),
             id_usuario_aplico_existencias: opts.idUsuario,
+            fecha_anulacion: null,
+            id_usuario_anulo: null,
           },
           select: remisionCompraDetailSelect,
         });

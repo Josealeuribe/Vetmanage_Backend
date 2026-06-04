@@ -4,7 +4,6 @@ export const compraListSelect = Prisma.validator<Prisma.comprasSelect>()({
   id_compra: true,
   codigo_compra: true,
   fecha_solicitud: true,
-  fecha_entrega: true,
   descripcion: true,
   subtotal: true,
   total_iva: true,

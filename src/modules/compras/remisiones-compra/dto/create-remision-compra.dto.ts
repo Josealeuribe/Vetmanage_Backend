@@ -1,7 +1,6 @@
 import {
   ArrayMinSize,
   IsArray,
-  IsDateString,
   IsInt,
   IsOptional,
   IsString,
@@ -29,17 +28,13 @@ export class CreateRemisionCompraDto {
   id_bodega: number;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  id_factura?: number;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(50)
+  codigo_factura?: string;
 
   @IsOptional()
-  @IsDateString()
-  fecha_vencimiento?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(255)
   observaciones?: string;
