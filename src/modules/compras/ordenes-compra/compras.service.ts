@@ -612,6 +612,14 @@ export class ComprasService {
       where: { id_compra: id },
       data: {
         id_estado_compra: ESTADO_APROBADA,
+
+        // Evidencia de aprobación
+        fecha_aprobacion: new Date(),
+        id_usuario_aprobo: opts.idUsuario,
+
+        // Limpiar datos de anulación por seguridad
+        fecha_anulacion: null,
+        id_usuario_anulo: null,
       },
       select: compraDetailSelect,
     });
@@ -632,6 +640,14 @@ export class ComprasService {
       where: { id_compra: id },
       data: {
         id_estado_compra: ESTADO_ANULADA,
+
+        // Evidencia de anulación
+        fecha_anulacion: new Date(),
+        id_usuario_anulo: opts.idUsuario,
+
+        // Limpiar datos de aprobación por seguridad
+        fecha_aprobacion: null,
+        id_usuario_aprobo: null,
       },
       select: compraDetailSelect,
     });

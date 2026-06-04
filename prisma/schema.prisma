@@ -82,11 +82,17 @@ model compras {
   id_estado_compra   Int               @db.UnsignedInt
   id_usuario_creador Int               @db.UnsignedInt
   id_bodega          Int               @db.UnsignedInt
+  fecha_aprobacion   DateTime?         @db.DateTime(0)
+  id_usuario_aprobo  Int?              @db.UnsignedInt
+  fecha_anulacion    DateTime?         @db.DateTime(0)
+  id_usuario_anulo   Int?              @db.UnsignedInt
   bodega             bodega            @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_compra_bodega")
   estado_compra      estado_compra     @relation(fields: [id_estado_compra], references: [id_estado_compra], onDelete: NoAction, map: "fk_compra_estado")
   proveedor          proveedor         @relation(fields: [id_proveedor], references: [id_proveedor], onDelete: NoAction, map: "fk_compra_proveedor")
   termino_pago       termino_pago      @relation(fields: [id_termino_pago], references: [id_termino_pago], onDelete: NoAction, map: "fk_compra_termino_pago")
   usuario            usuario           @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_compra_usuario_creador")
+  usuario_anulo      usuario?          @relation("compras_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_compras_usuario_anulo")
+  usuario_aprobo     usuario?          @relation("compras_id_usuario_aproboTousuario", fields: [id_usuario_aprobo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_compras_usuario_aprobo")
   detalle_compra     detalle_compra[]
   remision_compra    remision_compra[]
 
@@ -96,6 +102,8 @@ model compras {
   @@index([id_termino_pago], map: "fk_compra_termino_pago")
   @@index([id_usuario_creador], map: "fk_compra_usuario_creador")
   @@index([fecha_solicitud], map: "idx_compras_fecha")
+  @@index([id_usuario_anulo], map: "idx_compras_usuario_anulo")
+  @@index([id_usuario_aprobo], map: "idx_compras_usuario_aprobo")
 }
 
 model cotizacion {
@@ -588,6 +596,8 @@ model usuario {
   id_genero                                                              Int?                   @db.UnsignedInt
   bodegas_por_usuario                                                    bodegas_por_usuario[]
   compras                                                                compras[]
+  compras_anuladas                                                       compras[]              @relation("compras_id_usuario_anuloTousuario")
+  compras_aprobadas                                                      compras[]              @relation("compras_id_usuario_aproboTousuario")
   cotizacion                                                             cotizacion[]
   notificacion_usuario                                                   notificacion_usuario[]
   orden_venta                                                            orden_venta[]

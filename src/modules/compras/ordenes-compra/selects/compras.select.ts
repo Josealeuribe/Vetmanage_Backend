@@ -30,6 +30,29 @@ export const compraListSelect = Prisma.validator<Prisma.comprasSelect>()({
     },
   },
 
+  fecha_aprobacion: true,
+  id_usuario_aprobo: true,
+  fecha_anulacion: true,
+  id_usuario_anulo: true,
+
+  usuario_aprobo: {
+    select: {
+      id_usuario: true,
+      nombre: true,
+      apellido: true,
+      email: true,
+    },
+  },
+
+  usuario_anulo: {
+    select: {
+      id_usuario: true,
+      nombre: true,
+      apellido: true,
+      email: true,
+    },
+  },
+
   estado_compra: {
     select: {
       id_estado_compra: true,
