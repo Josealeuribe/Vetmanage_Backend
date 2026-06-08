@@ -66,7 +66,7 @@ const rolSelect = {
 
 @Injectable()
 export class RolesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async validarPermisos(idsPermisos: number[]) {
     if (!idsPermisos?.length) return;
@@ -101,12 +101,12 @@ export class RolesService {
             estado: dto.estado ?? true,
             ...(idsPermisos.length
               ? {
-                  roles_permisos: {
-                    create: idsPermisos.map((id_permiso) => ({
-                      id_permiso,
-                    })),
-                  },
-                }
+                roles_permisos: {
+                  create: idsPermisos.map((id_permiso) => ({
+                    id_permiso,
+                  })),
+                },
+              }
               : {}),
           },
           select: rolSelect,
@@ -176,15 +176,15 @@ export class RolesService {
   async update(id_rol: number, dto: UpdateRolDto) {
     await this.findOne(id_rol);
 
-    const idsPermisos = dto.ids_permisos
-      ? [...new Set(dto.ids_permisos)]
-      : undefined;
+    const idsPermisos =
+      dto.ids_permisos !== undefined
+        ? [...new Set(dto.ids_permisos)]
+        : undefined;
 
-    if (idsPermisos) {
+    if (idsPermisos !== undefined) {
       await this.validarPermisos(idsPermisos);
     }
 
-    // No permitir desactivar roles con usuarios asignados
     if (dto.estado === false) {
       const totalUsuarios = await this.prisma.usuario.count({
         where: { id_rol },
@@ -212,10 +212,38 @@ export class RolesService {
     }
 
     try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.roles.update({
+          where: { id_rol },
+          data,
+        });
+
+        if (idsPermisos !== undefined) {
+          await tx.roles_permisos.deleteMany({
+            where: { id_rol },
+          });
+
+          if (idsPermisos.length > 0) {
+            await tx.roles_permisos.createMany({
+              data: idsPermisos.map((id_permiso) => ({
+                id_rol,
+                id_permiso,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+
+        return tx.roles.findUnique({
+          where: { id_rol },
+          select: rolSelect,
+        });
+      });
     } catch (e: unknown) {
       if (isUniqueConstraintError(e, 'nombre_rol')) {
         throw new BadRequestException('Ya existe un rol con ese nombre');
       }
+
       throw e;
     }
   }
