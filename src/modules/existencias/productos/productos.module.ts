@@ -6,6 +6,7 @@ import { CategoriaProductoController } from './categoria-producto/categoria-prod
 import { CategoriaProductoService } from './categoria-producto/categoria-producto.service';
 import { IvaController } from './iva/iva.controller';
 import { IvaService } from './iva/iva.service';
+import { PermissionsGuard } from 'src/modules/configuracion/permisos/guards/permissions.guard';
 
 @Module({
   imports: [],
@@ -19,6 +20,7 @@ import { IvaService } from './iva/iva.service';
     ProductosService,
     CategoriaProductoService,
     IvaService,
+    PermissionsGuard,
   ],
   exports: [ProductosService, CategoriaProductoService, IvaService],
 })

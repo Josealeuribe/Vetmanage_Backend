@@ -212,31 +212,6 @@ export class RolesService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        if (idsPermisos !== undefined) {
-          await tx.roles_permisos.deleteMany({
-            where: { id_rol },
-          });
-
-          if (idsPermisos.length) {
-            await tx.roles_permisos.createMany({
-              data: idsPermisos.map((id_permiso) => ({
-                id_rol,
-                id_permiso,
-              })),
-              skipDuplicates: true,
-            });
-          }
-        }
-
-        return tx.roles.update({
-          where: { id_rol },
-          data,
-          select: rolSelect,
-        });
-      });
-
-      return this.findOne(id_rol);
     } catch (e: unknown) {
       if (isUniqueConstraintError(e, 'nombre_rol')) {
         throw new BadRequestException('Ya existe un rol con ese nombre');
@@ -261,58 +236,5 @@ export class RolesService {
     return this.prisma.roles.delete({
       where: { id_rol },
     });
-
-    return this.findOne(id_rol);
-  }
-
-  private async ensureExists(id_rol: number): Promise<roles> {
-    const rol = await this.prisma.roles.findUnique({
-      where: { id_rol },
-    });
-
-    if (!rol) {
-      throw new NotFoundException('Rol no encontrado');
-    }
-
-    return rol;
-  }
-
-  private normalizeIds(ids?: number[]): number[] {
-    if (!ids?.length) return [];
-
-    return [
-      ...new Set(ids.map(Number).filter((n) => Number.isInteger(n) && n > 0)),
-    ];
-  }
-
-  private async ensurePermisosExist(idsPermisos: number[]): Promise<void> {
-    if (idsPermisos.length === 0) return;
-
-    const permisosExistentes = await this.prisma.permisos.findMany({
-      where: {
-        id_permiso: {
-          in: idsPermisos,
-        },
-      },
-      select: {
-        id_permiso: true,
-      },
-    });
-
-    if (permisosExistentes.length !== idsPermisos.length) {
-      throw new BadRequestException('Uno o más permisos no existen');
-    }
-  }
-
-  private async ensureNoUsersAssigned(id_rol: number): Promise<void> {
-    const totalUsuarios = await this.prisma.usuario.count({
-      where: { id_rol },
-    });
-
-    if (totalUsuarios > 0) {
-      throw new BadRequestException(
-        'No puedes desactivar este rol porque tiene usuarios asignados',
-      );
-    }
   }
 }

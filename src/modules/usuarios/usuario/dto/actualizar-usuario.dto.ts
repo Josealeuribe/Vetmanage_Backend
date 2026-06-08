@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -7,6 +8,7 @@ import {
   IsString,
   IsUrl,
   Length,
+  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -14,22 +16,32 @@ import {
 export class ActualizarUsuarioDto {
   @IsOptional()
   @IsString()
-  @Length(1, 100)
+  @Length(3, 30)
+  @Matches(/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/, {
+    message: 'El nombre solo permite letras',
+  })
   nombre?: string;
 
   @IsOptional()
   @IsString()
-  @Length(1, 100)
+  @Length(3, 30)
+  @Matches(/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/, {
+    message: 'El apellido solo permite letras',
+  })
   apellido?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   id_tipo_doc?: number;
 
   @IsOptional()
   @IsString()
-  @Length(1, 20)
+  @Length(6, 15)
+  @Matches(/^[0-9]+$/, {
+    message: 'El número de documento solo permite números',
+  })
   num_documento?: string;
 
   @IsOptional()
@@ -38,6 +50,7 @@ export class ActualizarUsuarioDto {
   email?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   id_rol?: number;
@@ -61,6 +74,7 @@ export class ActualizarUsuarioDto {
   img_url?: string | null;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   id_genero?: number | null;
