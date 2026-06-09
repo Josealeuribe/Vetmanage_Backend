@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -16,10 +17,30 @@ import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { UpdateEstadoCotizacionDto } from './dto/update-estado-cotizacion.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 
+type AuthRequest = {
+  user?: {
+    sub?: number | string;
+    id?: number | string;
+    id_usuario?: number | string;
+  };
+};
+
+const getAuthUserId = (req: AuthRequest) => {
+  const idUsuario = Number(
+    req.user?.sub ?? req.user?.id_usuario ?? req.user?.id,
+  );
+
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) {
+    throw new BadRequestException('Usuario autenticado inválido');
+  }
+
+  return idUsuario;
+};
+
 @UseGuards(AuthGuard('jwt'))
 @Controller('cotizaciones')
 export class CotizacionesController {
-  constructor(private readonly cotizacionesService: CotizacionesService) {}
+  constructor(private readonly cotizacionesService: CotizacionesService) { }
 
   @Post()
   create(@Body() dto: CreateCotizacionDto) {
@@ -58,7 +79,8 @@ export class CotizacionesController {
   updateEstado(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEstadoCotizacionDto,
+    @Req() req: AuthRequest,
   ) {
-    return this.cotizacionesService.updateEstado(id, dto);
+    return this.cotizacionesService.updateEstado(id, dto, getAuthUserId(req));
   }
 }

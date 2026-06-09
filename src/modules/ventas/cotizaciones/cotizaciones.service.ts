@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,13 +15,27 @@ type FindAllArgs = {
 
 @Injectable()
 export class CotizacionesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private readonly includeCotizacion =
     Prisma.validator<Prisma.cotizacionInclude>()({
       cliente: true,
       bodega: true,
       usuario: true,
+      usuario_aprobo: {
+        select: {
+          id_usuario: true,
+          nombre: true,
+          apellido: true,
+        },
+      },
+      usuario_anulo: {
+        select: {
+          id_usuario: true,
+          nombre: true,
+          apellido: true,
+        },
+      },
       estado_cotizacion: true,
       detalle_cotizacion: {
         include: {
@@ -41,6 +56,14 @@ export class CotizacionesService {
     if (!bodega) {
       throw new NotFoundException('Bodega no existe');
     }
+  }
+
+  private normalizeEstado(value?: string | null) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
   }
 
   private async resolveIva(
@@ -268,10 +291,27 @@ export class CotizacionesService {
     return this.prisma.$transaction(async (tx) => {
       const cotizacion = await tx.cotizacion.findUnique({
         where: { id_cotizacion: id },
+        include: {
+          estado_cotizacion: true,
+        },
       });
 
       if (!cotizacion) {
         throw new NotFoundException('Cotización no existe');
+      }
+
+      const estadoActual = String(
+        cotizacion.estado_cotizacion?.nombre_estado ?? '',
+      )
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+
+      if (estadoActual !== 'pendiente') {
+        throw new BadRequestException(
+          'Solo se pueden editar cotizaciones pendientes',
+        );
       }
 
       const cliente = await tx.cliente.findUnique({
@@ -364,10 +404,21 @@ export class CotizacionesService {
     });
   }
 
-  async updateEstado(id: number, dto: UpdateEstadoCotizacionDto) {
+  async updateEstado(
+    id: number,
+    dto: UpdateEstadoCotizacionDto,
+    idUsuarioGestion: number,
+  ) {
+    if (!Number.isFinite(idUsuarioGestion) || idUsuarioGestion <= 0) {
+      throw new BadRequestException('Usuario de gestión inválido');
+    }
+
     const cotizacion = await this.prisma.cotizacion.findUnique({
       where: { id_cotizacion: id },
-      select: { id_cotizacion: true },
+      select: {
+        id_cotizacion: true,
+        id_estado_cotizacion: true,
+      },
     });
 
     if (!cotizacion) {
@@ -376,18 +427,35 @@ export class CotizacionesService {
 
     const estado = await this.prisma.estado_cotizacion.findUnique({
       where: { id_estado_cotizacion: dto.id_estado_cotizacion },
-      select: { id_estado_cotizacion: true },
+      select: {
+        id_estado_cotizacion: true,
+        nombre_estado: true,
+      },
     });
 
     if (!estado) {
       throw new NotFoundException('Estado de cotización no existe');
     }
 
+    const estadoNormalizado = this.normalizeEstado(estado.nombre_estado);
+
+    const data: Prisma.cotizacionUncheckedUpdateInput = {
+      id_estado_cotizacion: dto.id_estado_cotizacion,
+    };
+
+    if (estadoNormalizado === 'aprobada') {
+      data.id_usuario_aprobo = idUsuarioGestion;
+      data.fecha_aprobacion = new Date();
+    }
+
+    if (estadoNormalizado === 'anulada') {
+      data.id_usuario_anulo = idUsuarioGestion;
+      data.fecha_anulacion = new Date();
+    }
+
     return this.prisma.cotizacion.update({
       where: { id_cotizacion: id },
-      data: {
-        id_estado_cotizacion: dto.id_estado_cotizacion,
-      },
+      data,
       include: this.includeCotizacion,
     });
   }

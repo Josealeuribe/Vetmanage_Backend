@@ -116,10 +116,16 @@ model cotizacion {
   id_usuario_creador   Int                  @db.UnsignedInt
   id_estado_cotizacion Int                  @db.UnsignedInt
   observaciones        String?              @db.VarChar(255)
+  fecha_aprobacion     DateTime?            @db.DateTime(0)
+  id_usuario_aprobo    Int?                 @db.UnsignedInt
+  fecha_anulacion      DateTime?            @db.DateTime(0)
+  id_usuario_anulo     Int?                 @db.UnsignedInt
   bodega               bodega               @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_cotizacion_bodega")
   cliente              cliente              @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_cotizacion_cliente")
   estado_cotizacion    estado_cotizacion    @relation(fields: [id_estado_cotizacion], references: [id_estado_cotizacion], onDelete: NoAction, map: "fk_cotizacion_estado")
   usuario              usuario              @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_cotizacion_usuario")
+  usuario_anulo        usuario?             @relation("cotizacion_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_cotizacion_usuario_anulo")
+  usuario_aprobo       usuario?             @relation("cotizacion_id_usuario_aproboTousuario", fields: [id_usuario_aprobo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_cotizacion_usuario_aprobo")
   detalle_cotizacion   detalle_cotizacion[]
   orden_venta          orden_venta?
 
@@ -128,6 +134,8 @@ model cotizacion {
   @@index([id_bodega], map: "idx_cotizacion_bodega")
   @@index([id_cliente], map: "idx_cotizacion_cliente")
   @@index([fecha], map: "idx_cotizacion_fecha")
+  @@index([id_usuario_aprobo], map: "idx_cotizacion_usuario_aprobo")
+  @@index([id_usuario_anulo], map: "idx_cotizacion_usuario_anulo")
 }
 
 model departamentos {
@@ -599,6 +607,8 @@ model usuario {
   compras_anuladas                                                       compras[]              @relation("compras_id_usuario_anuloTousuario")
   compras_aprobadas                                                      compras[]              @relation("compras_id_usuario_aproboTousuario")
   cotizacion                                                             cotizacion[]
+  cotizaciones_anuladas                                                  cotizacion[]           @relation("cotizacion_id_usuario_anuloTousuario")
+  cotizaciones_aprobadas                                                 cotizacion[]           @relation("cotizacion_id_usuario_aproboTousuario")
   notificacion_usuario                                                   notificacion_usuario[]
   orden_venta                                                            orden_venta[]
   password_setup_tokens                                                  password_setup_token[]
