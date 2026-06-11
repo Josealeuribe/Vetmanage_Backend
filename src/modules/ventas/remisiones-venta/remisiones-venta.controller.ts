@@ -8,7 +8,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { RemisionesVentaService } from './remisiones-venta.service';
 import { CreateRemisionVentaDto } from './dto/create-remision-venta.dto';
 import { UpdateEstadoRemisionVentaDto } from './dto/update-estado-remision-venta.dto';
@@ -26,11 +29,30 @@ function parseOptionalPositiveInt(value?: string) {
   return parsed;
 }
 
+type AuthRequest = {
+  user?: {
+    sub?: number | string;
+    id?: number | string;
+    id_usuario?: number | string;
+  };
+};
+
+function getAuthUserId(req: AuthRequest) {
+  const idUsuario = Number(req.user?.sub ?? req.user?.id_usuario ?? req.user?.id);
+
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) {
+    throw new BadRequestException('Usuario autenticado inválido');
+  }
+
+  return idUsuario;
+}
+
+@UseGuards(AuthGuard('jwt'))
 @Controller('remisiones-venta')
 export class RemisionesVentaController {
   constructor(
     private readonly remisionesVentaService: RemisionesVentaService,
-  ) {}
+  ) { }
 
   @Get('catalogos')
   findCatalogos(
@@ -74,7 +96,12 @@ export class RemisionesVentaController {
   updateEstado(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEstadoRemisionVentaDto,
+    @Req() req: AuthRequest,
   ) {
-    return this.remisionesVentaService.updateEstado(id, dto);
+    return this.remisionesVentaService.updateEstado(
+      id,
+      dto,
+      getAuthUserId(req),
+    );
   }
 }

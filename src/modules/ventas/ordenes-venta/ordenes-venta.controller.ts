@@ -8,7 +8,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { OrdenesVentaService } from './ordenes-venta.service';
 import { CreateOrdenVentaDto } from './dto/create-orden-venta.dto';
 import { UpdateEstadoOrdenVentaDto } from './dto/update-estado-orden-venta.dto';
@@ -26,9 +29,28 @@ function parseOptionalPositiveInt(value?: string) {
   return parsed;
 }
 
+type AuthRequest = {
+  user?: {
+    sub?: number | string;
+    id?: number | string;
+    id_usuario?: number | string;
+  };
+};
+
+function getAuthUserId(req: AuthRequest) {
+  const idUsuario = Number(req.user?.sub ?? req.user?.id_usuario ?? req.user?.id);
+
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) {
+    throw new BadRequestException('Usuario autenticado inválido');
+  }
+
+  return idUsuario;
+}
+
+@UseGuards(AuthGuard('jwt'))
 @Controller('ordenes-venta')
 export class OrdenesVentaController {
-  constructor(private readonly ordenesVentaService: OrdenesVentaService) {}
+  constructor(private readonly ordenesVentaService: OrdenesVentaService) { }
 
   @Get('catalogos')
   findCatalogos(@Query('id_bodega') idBodegaRaw?: string) {
@@ -64,7 +86,8 @@ export class OrdenesVentaController {
   updateEstado(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEstadoOrdenVentaDto,
+    @Req() req: AuthRequest,
   ) {
-    return this.ordenesVentaService.updateEstado(id, dto);
+    return this.ordenesVentaService.updateEstado(id, dto, getAuthUserId(req));
   }
 }

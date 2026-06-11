@@ -26,7 +26,7 @@ type DetalleNormalizado = Array<{
 
 @Injectable()
 export class RemisionesVentaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private readonly remisionInclude =
     Prisma.validator<Prisma.remision_ventaInclude>()({
@@ -51,6 +51,20 @@ export class RemisionesVentaService {
       cliente: true,
       estado_remision_venta: true,
       usuario: true,
+      usuario_despacho: {
+        select: {
+          id_usuario: true,
+          nombre: true,
+          apellido: true,
+        },
+      },
+      usuario_anulo: {
+        select: {
+          id_usuario: true,
+          nombre: true,
+          apellido: true,
+        },
+      },
       factura: true,
       detalle_remision_venta: {
         include: {
@@ -175,6 +189,192 @@ export class RemisionesVentaService {
     }
   }
 
+  private firmaBufferToDataUrl(
+    firma?: Buffer | Uint8Array | number[] | null,
+  ) {
+    if (!firma) return null;
+
+    const buffer = Buffer.isBuffer(firma)
+      ? firma
+      : Buffer.from(firma);
+
+    if (!buffer.length) return null;
+
+    return `data:image/png;base64,${buffer.toString('base64')}`;
+  }
+
+  private serializarRemision(remision: any) {
+    if (!remision) return remision;
+
+    return {
+      ...remision,
+      firma_digital: this.firmaBufferToDataUrl(remision.firma_digital),
+    };
+  }
+
+  private decimalToNumber(value: unknown) {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private getDisponibleExistencia(existencia: {
+    cantidad?: unknown;
+    cantidad_reservada?: unknown;
+  }) {
+    return Math.max(
+      this.decimalToNumber(existencia.cantidad) -
+      this.decimalToNumber(existencia.cantidad_reservada),
+      0,
+    );
+  }
+
+  private async reservarExistencia(
+    tx: Prisma.TransactionClient,
+    idExistencia: number,
+    cantidad: number,
+  ) {
+    const rows = await tx.$queryRaw<
+      Array<{
+        id_existencia: number;
+        cantidad: any;
+        cantidad_reservada: any;
+        lote: string | null;
+      }>
+    >`
+    SELECT 
+      id_existencia,
+      cantidad,
+      cantidad_reservada,
+      lote
+    FROM existencias
+    WHERE id_existencia = ${idExistencia}
+    FOR UPDATE
+  `;
+
+    const existencia = rows[0];
+
+    if (!existencia) {
+      throw new NotFoundException(`Existencia ${idExistencia} no existe`);
+    }
+
+    const disponible = this.getDisponibleExistencia(existencia);
+
+    if (cantidad > disponible) {
+      throw new BadRequestException(
+        `La existencia ${idExistencia} no tiene cantidad suficiente. Disponible: ${disponible}`,
+      );
+    }
+
+    await tx.existencias.update({
+      where: { id_existencia: idExistencia },
+      data: {
+        cantidad_reservada: {
+          increment: cantidad,
+        },
+      },
+    });
+  }
+
+  private async liberarReservasRemision(
+    tx: Prisma.TransactionClient,
+    idRemisionVenta: number,
+  ) {
+    const detalles = await tx.detalle_remision_venta.findMany({
+      where: { id_remision_venta: idRemisionVenta },
+      select: {
+        id_existencia: true,
+        cantidad: true,
+      },
+    });
+
+    for (const detalle of detalles) {
+      const cantidad = this.decimalToNumber(detalle.cantidad);
+
+      if (cantidad <= 0) continue;
+
+      await tx.existencias.update({
+        where: { id_existencia: detalle.id_existencia },
+        data: {
+          cantidad_reservada: {
+            decrement: cantidad,
+          },
+        },
+      });
+    }
+  }
+
+  private async confirmarEntregaRemision(
+    tx: Prisma.TransactionClient,
+    idRemisionVenta: number,
+  ) {
+    const detalles = await tx.detalle_remision_venta.findMany({
+      where: { id_remision_venta: idRemisionVenta },
+      select: {
+        id_existencia: true,
+        cantidad: true,
+      },
+    });
+
+    for (const detalle of detalles) {
+      const cantidad = this.decimalToNumber(detalle.cantidad);
+
+      if (cantidad <= 0) continue;
+
+      const rows = await tx.$queryRaw<
+        Array<{
+          id_existencia: number;
+          cantidad: any;
+          cantidad_reservada: any;
+        }>
+      >`
+      SELECT 
+        id_existencia,
+        cantidad,
+        cantidad_reservada
+      FROM existencias
+      WHERE id_existencia = ${detalle.id_existencia}
+      FOR UPDATE
+    `;
+
+      const existencia = rows[0];
+
+      if (!existencia) {
+        throw new NotFoundException(
+          `Existencia ${detalle.id_existencia} no existe`,
+        );
+      }
+
+      const cantidadActual = this.decimalToNumber(existencia.cantidad);
+      const cantidadReservada = this.decimalToNumber(
+        existencia.cantidad_reservada,
+      );
+
+      if (cantidad > cantidadActual) {
+        throw new BadRequestException(
+          `La existencia ${detalle.id_existencia} no tiene cantidad suficiente para entregar`,
+        );
+      }
+
+      if (cantidad > cantidadReservada) {
+        throw new BadRequestException(
+          `La existencia ${detalle.id_existencia} no tiene reserva suficiente para entregar`,
+        );
+      }
+
+      await tx.existencias.update({
+        where: { id_existencia: detalle.id_existencia },
+        data: {
+          cantidad: {
+            decrement: cantidad,
+          },
+          cantidad_reservada: {
+            decrement: cantidad,
+          },
+        },
+      });
+    }
+  }
+
   private async getOrdenAprobada(
     db: Prisma.TransactionClient | PrismaService,
     idOrdenVenta: number,
@@ -265,27 +465,6 @@ export class RemisionesVentaService {
 
     return precio > 0 ? precio : null;
   }
-
-  // private async assertPreciosDetalleOrdenValidos(
-  //   db: Prisma.TransactionClient | PrismaService,
-  //   orden: Awaited<ReturnType<RemisionesVentaService['getOrdenAprobada']>>,
-  // ) {
-  //   for (const item of orden.detalle_orden_venta) {
-  //     const precioMinimo = await this.getPrecioMinimoVentaProducto(
-  //       db,
-  //       Number(item.id_producto),
-  //       Number(orden.id_bodega),
-  //     );
-
-  //     if (precioMinimo === null) continue;
-
-  //     if (Number(item.precio_unitario) < Number(precioMinimo)) {
-  //       throw new BadRequestException(
-  //         `El producto "${item.producto?.nombre_producto ?? item.id_producto}" tiene un precio en la orden de venta menor al último precio de ingreso al inventario (${precioMinimo}).`,
-  //       );
-  //     }
-  //   }
-  // }
 
   private buildCantidadesRemitidasPorProducto(
     orden: Awaited<ReturnType<RemisionesVentaService['getOrdenAprobada']>>,
@@ -445,11 +624,11 @@ export class RemisionesVentaService {
           );
         }
 
-        const disponible = Number(existencia.cantidad ?? 0);
+        const disponible = this.getDisponibleExistencia(existencia);
 
         if (cantidadSolicitada > disponible) {
           throw new BadRequestException(
-            `La existencia ${idExistencia} no tiene cantidad suficiente`,
+            `La existencia ${idExistencia} no tiene cantidad suficiente. Disponible: ${disponible}`,
           );
         }
 
@@ -471,35 +650,13 @@ export class RemisionesVentaService {
   }
 
   private async aplicarDetalleRemision(
-    db: Prisma.TransactionClient | PrismaService,
+    tx: Prisma.TransactionClient,
     idRemisionVenta: number,
     detalle: DetalleNormalizado,
   ) {
     for (const item of detalle) {
       for (const lote of item.lotes) {
-        const existencia = await db.existencias.findUnique({
-          where: { id_existencia: lote.id_existencia },
-          select: {
-            id_existencia: true,
-            cantidad: true,
-          },
-        });
-
-        if (!existencia) {
-          throw new NotFoundException(
-            `Existencia ${lote.id_existencia} no existe`,
-          );
-        }
-
-        const disponible = Number(existencia.cantidad ?? 0);
-
-        if (lote.cantidad > disponible) {
-          throw new BadRequestException(
-            `La existencia ${lote.id_existencia} no tiene cantidad suficiente`,
-          );
-        }
-
-        await db.detalle_remision_venta.create({
+        await tx.detalle_remision_venta.create({
           data: {
             id_remision_venta: idRemisionVenta,
             id_existencia: lote.id_existencia,
@@ -509,12 +666,11 @@ export class RemisionesVentaService {
           },
         });
 
-        await db.existencias.update({
-          where: { id_existencia: lote.id_existencia },
-          data: {
-            cantidad: disponible - lote.cantidad,
-          },
-        });
+        await this.reservarExistencia(
+          tx,
+          lote.id_existencia,
+          lote.cantidad,
+        );
       }
     }
   }
@@ -525,18 +681,23 @@ export class RemisionesVentaService {
   ) {
     const detalleActual = await db.detalle_remision_venta.findMany({
       where: { id_remision_venta: idRemisionVenta },
-      include: {
-        existencias: true,
+      select: {
+        id_existencia: true,
+        cantidad: true,
       },
     });
 
     for (const detalle of detalleActual) {
-      const disponible = Number(detalle.existencias?.cantidad ?? 0);
+      const cantidad = this.decimalToNumber(detalle.cantidad);
+
+      if (cantidad <= 0) continue;
 
       await db.existencias.update({
         where: { id_existencia: detalle.id_existencia },
         data: {
-          cantidad: disponible + Number(detalle.cantidad ?? 0),
+          cantidad_reservada: {
+            decrement: cantidad,
+          },
         },
       });
     }
@@ -630,19 +791,45 @@ export class RemisionesVentaService {
             );
 
             const existenciasProducto = existencias
+              .map((ex) => {
+                const cantidadReservadaActual =
+                  orden.remision_venta
+                    ?.filter((rv) =>
+                      args?.idRemisionEdicion
+                        ? Number(rv.id_remision_venta) === Number(args.idRemisionEdicion)
+                        : false,
+                    )
+                    .flatMap((rv) => rv.detalle_remision_venta ?? [])
+                    .filter(
+                      (detalle) =>
+                        Number(detalle.id_existencia) === Number(ex.id_existencia),
+                    )
+                    .reduce(
+                      (acc, detalle) => acc + Number(detalle.cantidad ?? 0),
+                      0,
+                    ) ?? 0;
+
+                const disponible =
+                  this.getDisponibleExistencia(ex) + cantidadReservadaActual;
+
+                return {
+                  ex,
+                  disponible,
+                };
+              })
               .filter(
-                (ex) =>
+                ({ ex, disponible }) =>
                   ex.id_bodega === orden.id_bodega &&
                   ex.id_producto === item.id_producto &&
-                  Number(ex.cantidad ?? 0) > 0,
+                  disponible > 0,
               )
-              .map((ex) => ({
+              .map(({ ex, disponible }) => ({
                 id_existencia: ex.id_existencia,
                 id_producto: ex.id_producto,
                 lote: ex.lote ?? '',
                 codigo_barras: ex.codigo_barras ?? '',
                 fecha_vencimiento: ex.fecha_vencimiento,
-                cantidad_disponible: Number(ex.cantidad ?? 0),
+                cantidad_disponible: disponible,
                 bodega: ex.bodega,
                 producto: ex.producto,
               }));
@@ -695,57 +882,10 @@ export class RemisionesVentaService {
     };
   }
 
-  // async create(dto: CreateRemisionVentaDto) {
-  //   return this.prisma.$transaction(async (tx) => {
-  //     const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
-  //     const estadoRemision = await this.assertEstadoRemisionExists(
-  //       tx,
-  //       dto.id_estado_remision_venta,
-  //     );
-
-  //     await this.assertUsuarioExists(tx, dto.id_usuario_creador);
-
-  //     const detalleNormalizado = await this.validarDetalleYExistencias(
-  //       tx,
-  //       orden,
-  //       dto.detalle,
-  //     );
-
-  //     const remision = await tx.remision_venta.create({
-  //       data: {
-  //         fecha_creacion: new Date(dto.fecha_creacion),
-  //         fecha_vencimiento: dto.fecha_vencimiento
-  //           ? new Date(dto.fecha_vencimiento)
-  //           : null,
-  //         observaciones: dto.observaciones ?? null,
-  //         id_orden_venta: dto.id_orden_venta,
-  //         id_cliente: orden.id_cliente,
-  //         id_estado_remision_venta: estadoRemision.id_estado_remision_venta,
-  //         id_usuario_creador: dto.id_usuario_creador,
-  //         id_factura: null,
-  //       },
-  //     });
-
-  //     await this.aplicarDetalleRemision(
-  //       tx,
-  //       remision.id_remision_venta,
-  //       detalleNormalizado,
-  //     );
-
-  //     return tx.remision_venta.update({
-  //       where: { id_remision_venta: remision.id_remision_venta },
-  //       data: {
-  //         codigo_remision_venta: `RMV-${String(remision.id_remision_venta).padStart(4, '0')}`,
-  //       },
-  //       include: this.remisionInclude,
-  //     });
-  //   });
-  // }
 
   async create(dto: CreateRemisionVentaDto) {
     return this.prisma.$transaction(async (tx) => {
       const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
-        // await this.assertPreciosDetalleOrdenValidos(tx, orden);
 
       const estadoRemision = await this.assertEstadoRemisionExists(
         tx,
@@ -831,28 +971,8 @@ export class RemisionesVentaService {
         );
       }
 
-      // const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
-      // const estadoRemision = await this.assertEstadoRemisionExists(
-      //   tx,
-      //   dto.id_estado_remision_venta,
-      // );
-      // await this.assertUsuarioExists(tx, dto.id_usuario_creador);
-
-      // await this.restaurarInventarioDeRemision(tx, id);
-
-      // await tx.detalle_remision_venta.deleteMany({
-      //   where: { id_remision_venta: id },
-      // });
-
-      // const detalleNormalizado = await this.validarDetalleYExistencias(
-      //   tx,
-      //   orden,
-      //   dto.detalle,
-      //   id,
-      // );
 
       const orden = await this.getOrdenAprobada(tx, dto.id_orden_venta);
-      // await this.assertPreciosDetalleOrdenValidos(tx, orden);
 
       const estadoRemision = await this.assertEstadoRemisionExists(
         tx,
@@ -897,23 +1017,25 @@ export class RemisionesVentaService {
     });
   }
 
-  async findAll(args?: FindArgs) {
+  async findAll(args: FindArgs) {
     await this.assertBodegaExists(this.prisma, args?.idBodega);
 
-    return this.prisma.remision_venta.findMany({
+    const remisiones = await this.prisma.remision_venta.findMany({
       where:
         args?.idBodega !== undefined
           ? {
-              orden_venta: {
-                id_bodega: args.idBodega,
-              },
-            }
+            orden_venta: {
+              id_bodega: args.idBodega,
+            },
+          }
           : undefined,
       include: this.remisionInclude,
       orderBy: {
         id_remision_venta: 'desc',
       },
     });
+
+    return remisiones.map((remision) => this.serializarRemision(remision));
   }
 
   async findOne(id: number) {
@@ -926,10 +1048,14 @@ export class RemisionesVentaService {
       throw new NotFoundException('Remisión de venta no existe');
     }
 
-    return remision;
+    return this.serializarRemision(remision);
   }
 
-  async updateEstado(id: number, dto: UpdateEstadoRemisionVentaDto) {
+  async updateEstado(
+    id: number,
+    dto: UpdateEstadoRemisionVentaDto,
+    idUsuarioGestion: number,
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const remision = await tx.remision_venta.findUnique({
         where: { id_remision_venta: id },
@@ -948,6 +1074,8 @@ export class RemisionesVentaService {
         throw new NotFoundException('Remisión de venta no existe');
       }
 
+      await this.assertUsuarioExists(tx, idUsuarioGestion);
+
       const nuevoEstado = await this.assertEstadoRemisionExists(
         tx,
         dto.id_estado_remision_venta,
@@ -955,10 +1083,11 @@ export class RemisionesVentaService {
 
       const estadoActualNombre = remision.estado_remision_venta?.nombre_estado;
       const nuevoEstadoNombre = nuevoEstado.nombre_estado;
+
       const nuevoEsAnulado = this.isEstadoAnulado(nuevoEstadoNombre);
       const nuevoEsDespachado = this.isEstadoDespachado(nuevoEstadoNombre);
       const nuevoEsEntregado = this.isEstadoEntregado(nuevoEstadoNombre);
-
+      const nuevoEsFacturada = this.isEstadoFacturado(nuevoEstadoNombre);
       if (this.isEstadoAnulado(estadoActualNombre)) {
         throw new BadRequestException(
           'Una remisión anulada no puede cambiar de estado',
@@ -971,10 +1100,18 @@ export class RemisionesVentaService {
         );
       }
 
-      if (this.isEstadoEntregado(estadoActualNombre)) {
+      if (this.isEstadoFacturado(estadoActualNombre)) {
         throw new BadRequestException(
-          'Una remisión entregada no puede cambiar de estado',
+          'Una remisión facturada no puede cambiar de estado',
         );
+      }
+
+      if (this.isEstadoEntregado(estadoActualNombre)) {
+        if (!nuevoEsFacturada) {
+          throw new BadRequestException(
+            'Una remisión entregada solo puede pasar a facturada',
+          );
+        }
       }
 
       if (this.isEstadoPendiente(estadoActualNombre)) {
@@ -993,35 +1130,52 @@ export class RemisionesVentaService {
         }
       }
 
+      if (this.isEstadoEntregado(estadoActualNombre)) {
+        if (!nuevoEsFacturada) {
+          throw new BadRequestException(
+            'Una remisión entregada solo puede pasar a facturada',
+          );
+        }
+      }
+
       const data: Prisma.remision_ventaUncheckedUpdateInput = {
         id_estado_remision_venta: dto.id_estado_remision_venta,
       };
 
+      if (nuevoEsDespachado) {
+        data.fecha_despacho = new Date();
+        data.id_usuario_despacho = idUsuarioGestion;
+      }
+
       if (nuevoEsEntregado) {
+        const nombreFirmante = String(dto.nombre_firmante ?? '').trim();
+
+        if (!nombreFirmante) {
+          throw new BadRequestException(
+            'Debes ingresar el nombre de la persona que recibe la remisión',
+          );
+        }
+
         data.firma_digital = this.decodeFirmaDigital(dto.firma_digital);
-        data.nombre_firmante =
-          remision.cliente?.nombre_cliente?.trim() || 'Cliente';
+        data.nombre_firmante = nombreFirmante;
         data.fecha_firma = new Date();
+        await this.confirmarEntregaRemision(tx, id);
       }
 
       if (nuevoEsAnulado) {
-        for (const detalle of remision.detalle_remision_venta) {
-          const disponible = Number(detalle.existencias?.cantidad ?? 0);
+        data.fecha_anulacion = new Date();
+        data.id_usuario_anulo = idUsuarioGestion;
 
-          await tx.existencias.update({
-            where: { id_existencia: detalle.id_existencia },
-            data: {
-              cantidad: disponible + Number(detalle.cantidad ?? 0),
-            },
-          });
-        }
+        await this.liberarReservasRemision(tx, id);
       }
 
-      return tx.remision_venta.update({
+      const remisionActualizada = await tx.remision_venta.update({
         where: { id_remision_venta: id },
         data,
         include: this.remisionInclude,
       });
+
+      return this.serializarRemision(remisionActualizada);
     });
   }
 }

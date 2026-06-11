@@ -368,6 +368,10 @@ model orden_venta {
   id_termino_pago       Int                   @db.UnsignedInt
   id_usuario            Int                   @db.UnsignedInt
   id_cotizacion         Int?                  @unique(map: "uq_ov_cotizacion") @db.UnsignedInt
+  fecha_aprobacion      DateTime?             @db.DateTime(0)
+  id_usuario_aprobo     Int?                  @db.UnsignedInt
+  fecha_anulacion       DateTime?             @db.DateTime(0)
+  id_usuario_anulo      Int?                  @db.UnsignedInt
   detalle_orden_venta   detalle_orden_venta[]
   bodega                bodega                @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_ov_bodega")
   cliente               cliente               @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_ov_cliente")
@@ -375,6 +379,8 @@ model orden_venta {
   estado_orden_venta    estado_orden_venta    @relation(fields: [id_estado_orden_venta], references: [id_estado_orden_venta], onDelete: NoAction, map: "fk_ov_estado")
   termino_pago          termino_pago          @relation(fields: [id_termino_pago], references: [id_termino_pago], onDelete: NoAction, map: "fk_ov_termino")
   usuario               usuario               @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, map: "fk_ov_usuario")
+  usuario_aprobo        usuario?              @relation("orden_venta_id_usuario_aproboTousuario", fields: [id_usuario_aprobo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_ov_usuario_aprobo")
+  usuario_anulo         usuario?              @relation("orden_venta_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_ov_usuario_anulo")
   remision_venta        remision_venta[]
 
   @@index([id_estado_orden_venta], map: "fk_ov_estado")
@@ -383,6 +389,8 @@ model orden_venta {
   @@index([id_bodega], map: "idx_ov_bodega")
   @@index([id_cliente], map: "idx_ov_cliente")
   @@index([fecha_creacion], map: "idx_ov_fecha")
+  @@index([id_usuario_aprobo], map: "idx_ov_usuario_aprobo")
+  @@index([id_usuario_anulo], map: "idx_ov_usuario_anulo")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -505,12 +513,18 @@ model remision_venta {
   firma_digital            Bytes?
   nombre_firmante          String?                  @db.VarChar(150)
   fecha_firma              DateTime?                @db.DateTime(0)
+  fecha_despacho           DateTime?                @db.DateTime(0)
+  id_usuario_despacho      Int?                     @db.UnsignedInt
+  fecha_anulacion          DateTime?                @db.DateTime(0)
+  id_usuario_anulo         Int?                     @db.UnsignedInt
   detalle_remision_venta   detalle_remision_venta[]
   cliente                  cliente                  @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_rv_cliente")
   estado_remision_venta    estado_remision_venta    @relation(fields: [id_estado_remision_venta], references: [id_estado_remision_venta], onDelete: NoAction, map: "fk_rv_estado")
   factura                  factura?                 @relation(fields: [id_factura], references: [id_factura], map: "fk_rv_factura")
   orden_venta              orden_venta              @relation(fields: [id_orden_venta], references: [id_orden_venta], onDelete: NoAction, map: "fk_rv_orden")
   usuario                  usuario                  @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_rv_usuario")
+  usuario_despacho         usuario?                 @relation("remision_venta_id_usuario_despachoTousuario", fields: [id_usuario_despacho], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_rv_usuario_despacho")
+  usuario_anulo            usuario?                 @relation("remision_venta_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_rv_usuario_anulo")
 
   @@index([id_cliente], map: "fk_rv_cliente")
   @@index([id_estado_remision_venta], map: "fk_rv_estado")
@@ -518,6 +532,8 @@ model remision_venta {
   @@index([id_usuario_creador], map: "fk_rv_usuario")
   @@index([fecha_creacion], map: "idx_rv_fecha")
   @@index([id_orden_venta], map: "idx_rv_orden")
+  @@index([id_usuario_despacho], map: "idx_rv_usuario_despacho")
+  @@index([id_usuario_anulo], map: "idx_rv_usuario_anulo")
 }
 
 model roles {
@@ -611,11 +627,15 @@ model usuario {
   cotizaciones_aprobadas                                                 cotizacion[]           @relation("cotizacion_id_usuario_aproboTousuario")
   notificacion_usuario                                                   notificacion_usuario[]
   orden_venta                                                            orden_venta[]
+  ordenes_venta_aprobadas                                                orden_venta[]          @relation("orden_venta_id_usuario_aproboTousuario")
+  ordenes_venta_anuladas                                                 orden_venta[]          @relation("orden_venta_id_usuario_anuloTousuario")
   password_setup_tokens                                                  password_setup_token[]
   remision_compra                                                        remision_compra[]
   remision_compra_usuario_anulo                                          remision_compra[]      @relation("remision_compra_id_usuario_anuloTousuario")
   remision_compra_remision_compra_id_usuario_aplico_existenciasTousuario remision_compra[]      @relation("remision_compra_id_usuario_aplico_existenciasTousuario")
   remision_venta                                                         remision_venta[]
+  remisiones_venta_despachadas                                           remision_venta[]       @relation("remision_venta_id_usuario_despachoTousuario")
+  remisiones_venta_anuladas                                              remision_venta[]       @relation("remision_venta_id_usuario_anuloTousuario")
   traslado                                                               traslado[]
   genero                                                                 genero?                @relation(fields: [id_genero], references: [id_genero], map: "fk_usuario_genero")
   roles                                                                  roles                  @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, map: "fk_usuario_rol")
