@@ -354,18 +354,26 @@ export class ExistenciasService {
 
     return Promise.all(
       productos.map(async (producto) => {
-        const lotes = producto.existencias.map((existencia) => ({
-          id_existencia: existencia.id_existencia,
-          lote: existencia.lote,
-          cantidad: Number(existencia.cantidad),
-          fecha_vencimiento: existencia.fecha_vencimiento,
-          id_bodega: existencia.id_bodega,
-          nombre_bodega: existencia.bodega?.nombre_bodega ?? '',
-          nota: existencia.nota ?? '',
-        }));
+        const lotes = producto.existencias.map((existencia) => {
+          const cantidad = Number(existencia.cantidad ?? 0);
+          const cantidadReservada = Number(existencia.cantidad_reservada ?? 0);
+          const cantidadDisponible = Math.max(cantidad - cantidadReservada, 0);
+
+          return {
+            id_existencia: existencia.id_existencia,
+            lote: existencia.lote,
+            cantidad,
+            cantidad_reservada: cantidadReservada,
+            cantidad_disponible: cantidadDisponible,
+            fecha_vencimiento: existencia.fecha_vencimiento,
+            id_bodega: existencia.id_bodega,
+            nombre_bodega: existencia.bodega?.nombre_bodega ?? "",
+            nota: existencia.nota,
+          };
+        });
 
         const stock_total = lotes.reduce(
-          (sum, lote) => sum + Number(lote.cantidad),
+          (acc, lote) => acc + Number(lote.cantidad_disponible ?? 0),
           0,
         );
 

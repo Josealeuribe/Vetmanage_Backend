@@ -9,14 +9,43 @@ import { CreateAbonoDto } from './dto/create-abono.dto';
 
 @Injectable()
 export class PagosAbonosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private readonly facturaInclude = {
     cliente: true,
     estado_factura: true,
+    bodega: true,
+    usuario_creador: {
+      select: {
+        id_usuario: true,
+        nombre: true,
+        apellido: true,
+      },
+    },
+    usuario_anulo: {
+      select: {
+        id_usuario: true,
+        nombre: true,
+        apellido: true,
+      },
+    },
     pagos_abonos: {
       include: {
         metodo_pago: true,
+        usuario_registro: {
+          select: {
+            id_usuario: true,
+            nombre: true,
+            apellido: true,
+          },
+        },
+        usuario_anulo: {
+          select: {
+            id_usuario: true,
+            nombre: true,
+            apellido: true,
+          },
+        },
       },
     },
     remision_venta: {
@@ -55,15 +84,25 @@ export class PagosAbonosService {
   }
 
   private isEstadoEntregado(nombre?: string | null) {
-  return this.normalizeText(nombre).includes('entreg');
-}
+    return this.normalizeText(nombre).includes('entreg');
+  }
 
   private isEstadoAnulado(nombre?: string | null) {
     return this.normalizeText(nombre).includes('anulad');
   }
 
+  private parseFecha(value: string, campo: string) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`${campo} inválida`);
+    }
+
+    return date;
+  }
+
   private generarCodigoTemporal() {
-    return `TMP-FAC-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    return `TMP-PG-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   }
 
   private matchesBodegaInRemision(remision: any, idBodega?: number) {
@@ -71,8 +110,8 @@ export class PagosAbonosService {
 
     const remisionBodegaId = Number(
       remision?.orden_venta?.id_bodega ??
-        remision?.orden_venta?.bodega?.id_bodega ??
-        0,
+      remision?.orden_venta?.bodega?.id_bodega ??
+      0,
     );
 
     return remisionBodegaId === Number(idBodega);
@@ -80,6 +119,12 @@ export class PagosAbonosService {
 
   private matchesBodegaInFactura(factura: any, idBodega?: number) {
     if (!idBodega) return true;
+
+    const idBodegaFactura = Number(factura?.id_bodega ?? 0);
+
+    if (idBodegaFactura === Number(idBodega)) {
+      return true;
+    }
 
     const remisiones = Array.isArray(factura?.remision_venta)
       ? factura.remision_venta
@@ -101,8 +146,8 @@ export class PagosAbonosService {
       (acc: number, item: any) =>
         acc +
         Number(item.cantidad) *
-          Number(item.precio_unitario) *
-          (Number(item.iva ?? 0) / 100),
+        Number(item.precio_unitario) *
+        (Number(item.iva ?? 0) / 100),
       0,
     );
 
@@ -113,6 +158,31 @@ export class PagosAbonosService {
       total_iva: this.round2(totalIva),
       total: this.round2(total),
     };
+  }
+
+  private async buscarEstadoRemisionVentaId(
+    db: any,
+    nombres: string[],
+    obligatorio = false,
+  ) {
+    const estado = await db.estado_remision_venta.findFirst({
+      where: {
+        nombre_estado: {
+          in: nombres,
+        },
+      },
+      orderBy: {
+        id_estado_remision_venta: 'asc',
+      },
+    });
+
+    if (!estado && obligatorio) {
+      throw new BadRequestException(
+        `No existe un estado de remisión válido para: ${nombres.join(', ')}`,
+      );
+    }
+
+    return estado?.id_estado_remision_venta ?? null;
   }
 
   private construirFacturaRespuesta(factura: any) {
@@ -263,11 +333,11 @@ export class PagosAbonosService {
     const cliente = await this.prisma.cliente.findUnique({
       where: { id_cliente: idCliente },
     });
-  
+
     if (!cliente) {
       throw new NotFoundException('Cliente no existe');
     }
-  
+
     const remisiones = await this.prisma.remision_venta.findMany({
       where: {
         id_cliente: idCliente,
@@ -296,22 +366,37 @@ export class PagosAbonosService {
         id_remision_venta: 'desc',
       },
     });
-  
+
     const remisionesFiltradas = remisiones.filter(
       (remision) =>
         this.matchesBodegaInRemision(remision, idBodega) &&
         this.isEstadoEntregado(remision.estado_remision_venta?.nombre_estado) &&
         !this.isEstadoAnulado(remision.estado_remision_venta?.nombre_estado),
     );
-  
+
     return remisionesFiltradas.map((remision) => ({
       ...remision,
       resumen: this.calcularResumenRemision(remision),
     }));
   }
 
-  async createFacturaDesdeRemisiones(dto: CreateFacturaDesdeRemisionesDto) {
+  async createFacturaDesdeRemisiones(
+    dto: CreateFacturaDesdeRemisionesDto,
+    idUsuario: number,
+  ) {
     return this.prisma.$transaction(async (tx) => {
+      const remisionesIds = Array.from(
+        new Set(dto.id_remisiones.map((id) => Number(id))),
+      );
+
+      if (remisionesIds.length === 0) {
+        throw new BadRequestException('Debes seleccionar al menos una remisión');
+      }
+
+      if (remisionesIds.length !== dto.id_remisiones.length) {
+        throw new BadRequestException('No puedes enviar remisiones repetidas');
+      }
+
       const cliente = await tx.cliente.findUnique({
         where: { id_cliente: dto.id_cliente },
       });
@@ -320,20 +405,37 @@ export class PagosAbonosService {
         throw new NotFoundException('Cliente no existe');
       }
 
+      const fechaFactura = this.parseFecha(dto.fecha_factura, 'Fecha de pago');
+
+      const fechaVencimiento = dto.fecha_vencimiento
+        ? this.parseFecha(dto.fecha_vencimiento, 'Fecha de vencimiento')
+        : null;
+
+      if (fechaVencimiento && fechaVencimiento < fechaFactura) {
+        throw new BadRequestException(
+          'La fecha de vencimiento no puede ser anterior a la fecha del pago',
+        );
+      }
+
       const remisiones = await tx.remision_venta.findMany({
         where: {
           id_remision_venta: {
-            in: dto.id_remisiones,
+            in: remisionesIds,
           },
         },
         include: {
           cliente: true,
           estado_remision_venta: true,
+          orden_venta: {
+            include: {
+              bodega: true,
+            },
+          },
           detalle_remision_venta: true,
         },
       });
 
-      if (remisiones.length !== dto.id_remisiones.length) {
+      if (remisiones.length !== remisionesIds.length) {
         throw new BadRequestException(
           'Una o más remisiones no existen o no pudieron cargarse',
         );
@@ -348,7 +450,7 @@ export class PagosAbonosService {
 
         if (remision.id_factura) {
           throw new BadRequestException(
-            `La remisión ${remision.id_remision_venta} ya está asociada a una factura`,
+            `La remisión ${remision.id_remision_venta} ya está asociada a un pago`,
           );
         }
 
@@ -360,7 +462,7 @@ export class PagosAbonosService {
 
         if (!this.isEstadoEntregado(remision.estado_remision_venta?.nombre_estado)) {
           throw new BadRequestException(
-            `La remisión ${remision.id_remision_venta} debe estar entregada para poder agregarse a una factura`,
+            `La remisión ${remision.id_remision_venta} debe estar entregada para poder agregarse a un pago`,
           );
         }
 
@@ -370,6 +472,39 @@ export class PagosAbonosService {
           );
         }
       }
+
+      const bodegaIds = Array.from(
+        new Set(
+          remisiones
+            .map((remision) => remision.orden_venta?.id_bodega)
+            .filter((id): id is number => Boolean(id)),
+        ),
+      );
+
+      if (bodegaIds.length > 1) {
+        throw new BadRequestException(
+          'No puedes crear un pago con remisiones de diferentes bodegas',
+        );
+      }
+
+      const idBodegaPago = bodegaIds[0] ?? null;
+
+      const remisionesSnapshot = remisiones
+        .map(
+          (remision) =>
+            remision.codigo_remision_venta ??
+            `RV-${String(remision.id_remision_venta).padStart(4, '0')}`,
+        )
+        .join(', ');
+
+      const bodegaSnapshot =
+        Array.from(
+          new Set(
+            remisiones
+              .map((remision) => remision.orden_venta?.bodega?.nombre_bodega)
+              .filter(Boolean),
+          ),
+        ).join(', ') || null;
 
       const totalFactura = remisiones.reduce((acc, remision) => {
         const resumen = this.calcularResumenRemision(remision);
@@ -382,37 +517,53 @@ export class PagosAbonosService {
         true,
       );
 
+      const estadoFacturadaRemisionId = await this.buscarEstadoRemisionVentaId(
+        tx,
+        ['Facturada', 'Facturado'],
+        true,
+      );
+
       const facturaCreada = await tx.factura.create({
         data: {
           codigo_factura: this.generarCodigoTemporal(),
-          fecha_factura: new Date(dto.fecha_factura),
-          fecha_vencimiento: dto.fecha_vencimiento
-            ? new Date(dto.fecha_vencimiento)
-            : null,
+          fecha_factura: fechaFactura,
+          fecha_vencimiento: fechaVencimiento,
           total: this.round2(totalFactura),
-          nota: dto.nota ?? null,
+          nota: dto.nota?.trim() || null,
           id_cliente: dto.id_cliente,
+          id_bodega: idBodegaPago,
           id_estado_factura: estadoPendienteId!,
+          id_usuario_creador: idUsuario,
+          remisiones_snapshot: remisionesSnapshot,
+          bodega_snapshot: bodegaSnapshot,
         },
       });
 
       await tx.factura.update({
         where: { id_factura: facturaCreada.id_factura },
         data: {
-          codigo_factura: `FC-${String(facturaCreada.id_factura).padStart(4, '0')}`,
+          codigo_factura: `PG-${String(facturaCreada.id_factura).padStart(4, '0')}`,
         },
       });
 
-      await tx.remision_venta.updateMany({
+      const remisionesActualizadas = await tx.remision_venta.updateMany({
         where: {
           id_remision_venta: {
-            in: dto.id_remisiones,
+            in: remisionesIds,
           },
+          id_factura: null,
         },
         data: {
           id_factura: facturaCreada.id_factura,
+          id_estado_remision_venta: estadoFacturadaRemisionId!,
         },
       });
+
+      if (remisionesActualizadas.count !== remisionesIds.length) {
+        throw new BadRequestException(
+          'Una o más remisiones ya fueron asociadas a otro pago',
+        );
+      }
 
       const facturaCompleta = await this.obtenerFacturaCompleta(
         tx,
@@ -420,7 +571,7 @@ export class PagosAbonosService {
       );
 
       if (!facturaCompleta) {
-        throw new NotFoundException('No se pudo reconstruir la factura creada');
+        throw new NotFoundException('No se pudo reconstruir el pago creado');
       }
 
       return this.construirFacturaRespuesta(facturaCompleta);
@@ -477,8 +628,20 @@ export class PagosAbonosService {
     return this.construirFacturaRespuesta(factura);
   }
 
-  async addAbono(idFactura: number, dto: CreateAbonoDto) {
+  async addAbono(
+    idFactura: number,
+    dto: CreateAbonoDto,
+    idUsuario: number,
+  ) {
     return this.prisma.$transaction(async (tx) => {
+      const valorAbono = Number(dto.valor);
+
+      if (!Number.isFinite(valorAbono) || valorAbono <= 0) {
+        throw new BadRequestException('El valor del abono debe ser mayor a cero');
+      }
+
+      const fechaPago = this.parseFecha(dto.fecha_pago, 'Fecha de abono');
+
       const factura = await tx.factura.findUnique({
         where: { id_factura: idFactura },
         include: {
@@ -488,14 +651,12 @@ export class PagosAbonosService {
       });
 
       if (!factura) {
-        throw new NotFoundException('Factura no existe');
+        throw new NotFoundException('Pago no existe');
       }
 
-      if (
-        this.isEstadoAnulado(factura.estado_factura?.nombre_estado_factura)
-      ) {
+      if (this.isEstadoAnulado(factura.estado_factura?.nombre_estado_factura)) {
         throw new BadRequestException(
-          'No puedes agregar abonos a una factura anulada',
+          'No puedes agregar abonos a un pago anulado',
         );
       }
 
@@ -515,13 +676,13 @@ export class PagosAbonosService {
 
       if (saldoPendiente <= 0) {
         throw new BadRequestException(
-          'La factura ya se encuentra completamente pagada',
+          'El pago ya se encuentra completamente abonado',
         );
       }
 
-      if (Number(dto.valor) > saldoPendiente) {
+      if (valorAbono > saldoPendiente) {
         throw new BadRequestException(
-          `El abono supera el saldo pendiente de la factura. Saldo actual: ${this.round2(
+          `El abono supera el saldo pendiente. Saldo actual: ${this.round2(
             saldoPendiente,
           )}`,
         );
@@ -529,10 +690,11 @@ export class PagosAbonosService {
 
       await tx.pagos_abonos.create({
         data: {
-          fecha_pago: new Date(dto.fecha_pago),
-          valor: dto.valor,
+          fecha_pago: fechaPago,
+          valor: this.round2(valorAbono),
           id_metodo: dto.id_metodo,
           id_factura: idFactura,
+          id_usuario_registro: idUsuario,
           estado: true,
         },
       });
@@ -543,7 +705,7 @@ export class PagosAbonosService {
 
       if (!facturaCompleta) {
         throw new NotFoundException(
-          'No se pudo reconstruir la factura actualizada',
+          'No se pudo reconstruir el pago actualizado',
         );
       }
 
@@ -551,7 +713,7 @@ export class PagosAbonosService {
     });
   }
 
-  async anularAbono(idPago: number) {
+  async anularAbono(idPago: number, idUsuario: number) {
     return this.prisma.$transaction(async (tx) => {
       const pago = await tx.pagos_abonos.findUnique({
         where: { id_pago: idPago },
@@ -569,6 +731,8 @@ export class PagosAbonosService {
         where: { id_pago: idPago },
         data: {
           estado: false,
+          fecha_anulacion: new Date(),
+          id_usuario_anulo: idUsuario,
         },
       });
 
@@ -581,7 +745,7 @@ export class PagosAbonosService {
 
       if (!facturaCompleta) {
         throw new NotFoundException(
-          'No se pudo reconstruir la factura luego de anular el abono',
+          'No se pudo reconstruir el pago luego de anular el abono',
         );
       }
 
@@ -590,5 +754,76 @@ export class PagosAbonosService {
         factura: this.construirFacturaRespuesta(facturaCompleta),
       };
     });
+  }
+
+  async anularFactura(idFactura: number, idUsuario: number) {
+    await this.prisma.$transaction(async (tx) => {
+      const factura = await tx.factura.findUnique({
+        where: { id_factura: idFactura },
+        include: {
+          estado_factura: true,
+          pagos_abonos: true,
+          remision_venta: true,
+        },
+      });
+
+      if (!factura) {
+        throw new NotFoundException('Pago no encontrado');
+      }
+
+      if (this.isEstadoAnulado(factura.estado_factura?.nombre_estado_factura)) {
+        throw new BadRequestException('El pago ya está anulado');
+      }
+
+      const tieneAbonosActivos = factura.pagos_abonos.some(
+        (pago) => pago.estado === true,
+      );
+
+      if (tieneAbonosActivos) {
+        throw new BadRequestException(
+          'No puedes anular un pago con abonos activos. Primero debes anular los abonos registrados.',
+        );
+      }
+
+      const estadoAnuladaFacturaId = await this.buscarEstadoFacturaId(
+        tx,
+        ['Anulada', 'Anulado'],
+        true,
+      );
+
+      const estadoEntregadaRemisionId = await this.buscarEstadoRemisionVentaId(
+        tx,
+        ['Entregado', 'Entregada'],
+        true,
+      );
+
+      await tx.remision_venta.updateMany({
+        where: {
+          id_factura: idFactura,
+        },
+        data: {
+          id_factura: null,
+          id_estado_remision_venta: estadoEntregadaRemisionId!,
+        },
+      });
+
+      await tx.factura.update({
+        where: {
+          id_factura: idFactura,
+        },
+        data: {
+          id_estado_factura: estadoAnuladaFacturaId!,
+          fecha_anulacion: new Date(),
+          id_usuario_anulo: idUsuario,
+        },
+      });
+    });
+
+    const facturaActualizada = await this.findFactura(idFactura);
+
+    return {
+      message: 'Pago anulado correctamente',
+      factura: facturaActualizada,
+    };
   }
 }
