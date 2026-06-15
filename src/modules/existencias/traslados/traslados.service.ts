@@ -706,14 +706,23 @@ export class TrasladosService {
         );
       }
 
+      if (debeRecalcularReservas) {
+        await this.liberarReservasExistencias(tx, detalleActualPlano);
+
+        if (!debeLiberarPorAnulacion) {
+          await this.validarExistencias(tx, nuevoOrigen, detalleObjetivo);
+          await this.reservarExistencias(tx, detalleObjetivo);
+        }
+      } else if (debeLiberarPorAnulacion) {
+        await this.liberarReservasExistencias(tx, detalleActualPlano);
+      }
+
       if (dto.detalle !== undefined) {
         if (actual.id_estado_traslado !== this.ESTADO_BORRADOR) {
           throw new BadRequestException(
             'Solo puedes editar el detalle de un traslado en borrador',
           );
         }
-
-        await this.validarExistencias(tx, nuevoOrigen, dto.detalle);
 
         await tx.detalle_traslado.deleteMany({
           where: { id_traslado: id },
@@ -732,17 +741,6 @@ export class TrasladosService {
             precio_compra_unitario: d.precio_compra_unitario,
           })),
         });
-      }
-
-      if (debeRecalcularReservas) {
-        await this.liberarReservasExistencias(tx, detalleActualPlano);
-
-        if (!debeLiberarPorAnulacion) {
-          await this.validarExistencias(tx, nuevoOrigen, detalleObjetivo);
-          await this.reservarExistencias(tx, detalleObjetivo);
-        }
-      } else if (debeLiberarPorAnulacion) {
-        await this.liberarReservasExistencias(tx, detalleActualPlano);
       }
 
       const updated = await tx.traslado.update({

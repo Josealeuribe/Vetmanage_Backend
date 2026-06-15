@@ -51,6 +51,128 @@ export class OrdenesVentaService {
     );
   }
 
+  private getCantidadDisponibleExistencia(existencia: {
+    cantidad: Prisma.Decimal | number | string;
+    cantidad_reservada?: Prisma.Decimal | number | string | null;
+  }) {
+    const cantidad = Number(existencia.cantidad ?? 0);
+    const reservada = Number(existencia.cantidad_reservada ?? 0);
+
+    return Math.max(0, cantidad - reservada);
+  }
+
+  private async buscarExistenciaReferencia(
+    idProducto: number,
+    idBodega?: number,
+  ) {
+    const existencias = await this.prisma.existencias.findMany({
+      where: {
+        id_producto: idProducto,
+        ...(idBodega ? { id_bodega: idBodega } : {}),
+        cantidad: {
+          gt: new Prisma.Decimal(0),
+        },
+        precio_compra_unitario: {
+          not: null,
+          gt: new Prisma.Decimal(0),
+        },
+      },
+      include: {
+        bodega: {
+          select: {
+            id_bodega: true,
+            nombre_bodega: true,
+          },
+        },
+      },
+      orderBy: [
+        {
+          fecha_vencimiento: 'asc',
+        },
+        {
+          id_existencia: 'desc',
+        },
+      ],
+    });
+
+    return (
+      existencias.find(
+        (existencia) => this.getCantidadDisponibleExistencia(existencia) > 0,
+      ) ?? null
+    );
+  }
+
+  async getCostoReferencia(idCliente: number, idProducto: number) {
+    const cliente = await this.prisma.cliente.findUnique({
+      where: {
+        id_cliente: idCliente,
+      },
+      select: {
+        id_cliente: true,
+        id_bodega: true,
+        bodega: {
+          select: {
+            id_bodega: true,
+            nombre_bodega: true,
+          },
+        },
+      },
+    });
+
+    if (!cliente) {
+      throw new NotFoundException('Cliente no existe');
+    }
+
+    const producto = await this.prisma.producto.findUnique({
+      where: {
+        id_producto: idProducto,
+      },
+      select: {
+        id_producto: true,
+      },
+    });
+
+    if (!producto) {
+      throw new NotFoundException('Producto no existe');
+    }
+
+    const existenciaBodegaCliente = await this.buscarExistenciaReferencia(
+      idProducto,
+      cliente.id_bodega,
+    );
+
+    const existenciaReferencia =
+      existenciaBodegaCliente ??
+      (await this.buscarExistenciaReferencia(idProducto));
+
+    if (!existenciaReferencia) {
+      return {
+        costo_referencia: null,
+        lote_referencia: null,
+        cantidad_disponible: 0,
+        id_bodega_referencia: null,
+        nombre_bodega_referencia: null,
+        origen_referencia: 'SIN_EXISTENCIAS_CON_COSTO',
+      };
+    }
+
+    const origenReferencia =
+      existenciaReferencia.id_bodega === cliente.id_bodega
+        ? 'BODEGA_CLIENTE'
+        : 'OTRA_BODEGA';
+
+    return {
+      costo_referencia: Number(existenciaReferencia.precio_compra_unitario ?? 0),
+      lote_referencia: existenciaReferencia.lote,
+      cantidad_disponible:
+        this.getCantidadDisponibleExistencia(existenciaReferencia),
+      id_bodega_referencia: existenciaReferencia.id_bodega,
+      nombre_bodega_referencia:
+        existenciaReferencia.bodega?.nombre_bodega ?? null,
+      origen_referencia: origenReferencia,
+    };
+  }
+
   private readonly ordenInclude = Prisma.validator<Prisma.orden_ventaInclude>()({
     cliente: true,
     bodega: true,
@@ -217,50 +339,6 @@ export class OrdenesVentaService {
 
     return precio > 0 ? precio : null;
   }
-
-  // private async assertPreciosVentaDetalleValidos(
-  //   db: Prisma.TransactionClient | PrismaService,
-  //   detalle: DetalleOrdenInput,
-  //   idBodega: number,
-  // ) {
-  //   const ids = [...new Set(detalle.map((item) => Number(item.id_producto)))];
-
-  //   const productos = await db.producto.findMany({
-  //     where: {
-  //       id_producto: {
-  //         in: ids,
-  //       },
-  //     },
-  //     select: {
-  //       id_producto: true,
-  //       nombre_producto: true,
-  //     },
-  //   });
-
-  //   const productosMap = new Map(
-  //     productos.map((producto) => [producto.id_producto, producto.nombre_producto]),
-  //   );
-
-  //   for (const item of detalle) {
-  //     const precioMinimo = await this.getPrecioMinimoVentaProducto(
-  //       db,
-  //       Number(item.id_producto),
-  //       idBodega,
-  //     );
-
-  //     if (precioMinimo === null) continue;
-
-  //     if (Number(item.precio_unitario) < Number(precioMinimo)) {
-  //       const nombre =
-  //         productosMap.get(Number(item.id_producto)) ??
-  //         `ID ${Number(item.id_producto)}`;
-
-  //       throw new BadRequestException(
-  //         `El precio de venta del producto "${nombre}" no puede ser menor al último precio de ingreso al inventario (${precioMinimo}).`,
-  //       );
-  //     }
-  //   }
-  // }
 
   private assertDetalleManualValido(detalle: DetalleOrdenInput) {
     if (!Array.isArray(detalle) || detalle.length === 0) {
@@ -433,12 +511,23 @@ export class OrdenesVentaService {
     const [clientes, productos, terminosPago, estados, cotizaciones] =
       await Promise.all([
         this.prisma.cliente.findMany({
-          where: { estado: true },
+          where: {
+            estado: true,
+            ...(args?.idBodega !== undefined
+              ? { id_bodega: args.idBodega }
+              : {}),
+          },
           orderBy: { nombre_cliente: 'asc' },
           include: {
             tipo_documento: true,
             tipo_cliente: true,
             municipios: true,
+            bodega: {
+              select: {
+                id_bodega: true,
+                nombre_bodega: true,
+              },
+            },
           },
         }),
         this.prisma.producto.findMany({

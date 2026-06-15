@@ -758,7 +758,6 @@ export class RemisionesVentaService {
     const existencias = await this.prisma.existencias.findMany({
       where: {
         id_producto: { in: productoIds.length ? productoIds : [0] },
-        id_bodega: { in: bodegaIds.length ? bodegaIds : [0] },
       },
       include: {
         producto: {
@@ -769,7 +768,12 @@ export class RemisionesVentaService {
         },
         bodega: true,
       },
-      orderBy: [{ id_producto: 'asc' }, { id_existencia: 'asc' }],
+      orderBy: [
+        { id_producto: 'asc' },
+        { id_bodega: 'asc' },
+        { fecha_vencimiento: 'asc' },
+        { id_existencia: 'asc' },
+      ],
     });
 
     return ordenesAprobadas
@@ -834,6 +838,32 @@ export class RemisionesVentaService {
                 producto: ex.producto,
               }));
 
+            const existenciasOtrasBodegas = existencias
+              .map((ex) => {
+                const disponible = this.getDisponibleExistencia(ex);
+
+                return {
+                  ex,
+                  disponible,
+                };
+              })
+              .filter(
+                ({ ex, disponible }) =>
+                  ex.id_bodega !== orden.id_bodega &&
+                  ex.id_producto === item.id_producto &&
+                  disponible > 0,
+              )
+              .map(({ ex, disponible }) => ({
+                id_existencia: ex.id_existencia,
+                id_producto: ex.id_producto,
+                lote: ex.lote ?? '',
+                codigo_barras: ex.codigo_barras ?? '',
+                fecha_vencimiento: ex.fecha_vencimiento,
+                cantidad_disponible: disponible,
+                bodega: ex.bodega,
+                producto: ex.producto,
+              }));
+
             return {
               id_producto: item.id_producto,
               cantidad_orden: cantidadOrden,
@@ -842,6 +872,7 @@ export class RemisionesVentaService {
               precio_unitario: Number(item.precio_unitario ?? 0),
               producto: item.producto,
               existencias_disponibles: existenciasProducto,
+              existencias_otras_bodegas: existenciasOtrasBodegas,
             };
           })
           .filter((item) => item.cantidad_pendiente > 0);

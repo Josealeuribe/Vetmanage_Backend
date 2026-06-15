@@ -58,6 +58,21 @@ export class OrdenesVentaController {
     return this.ordenesVentaService.findCatalogos({ idBodega });
   }
 
+  @Get('costo-referencia')
+  getCostoReferencia(
+    @Query('id_cliente') idClienteRaw?: string,
+    @Query('id_producto') idProductoRaw?: string,
+  ) {
+    const idCliente = parseOptionalPositiveInt(idClienteRaw);
+    const idProducto = parseOptionalPositiveInt(idProductoRaw);
+
+    if (!idCliente || !idProducto) {
+      throw new BadRequestException('Cliente y producto son requeridos');
+    }
+
+    return this.ordenesVentaService.getCostoReferencia(idCliente, idProducto);
+  }
+  
   @Post()
   create(@Body() dto: CreateOrdenVentaDto) {
     return this.ordenesVentaService.create(dto);
@@ -90,4 +105,5 @@ export class OrdenesVentaController {
   ) {
     return this.ordenesVentaService.updateEstado(id, dto, getAuthUserId(req));
   }
+  
 }
