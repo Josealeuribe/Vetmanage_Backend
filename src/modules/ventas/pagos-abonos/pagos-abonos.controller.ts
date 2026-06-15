@@ -56,6 +56,15 @@ export class PagosAbonosController {
     return this.pagosAbonosService.findCatalogos();
   }
 
+  @Get('clientes-con-remisiones-pendientes')
+  findClientesConRemisionesPendientes(
+    @Query('id_bodega') idBodegaRaw?: string,
+  ) {
+    const idBodega = parseOptionalPositiveInt(idBodegaRaw);
+
+    return this.pagosAbonosService.findClientesConRemisionesPendientes(idBodega);
+  }
+
   @Get('clientes/:idCliente/remisiones-pendientes')
   findRemisionesPendientesPorCliente(
     @Param('idCliente', ParseIntPipe) idCliente: number,

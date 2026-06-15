@@ -19,7 +19,7 @@ import { JwtAuthGuard } from 'src/modules/auth/login/jwt/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @Controller('clientes')
 export class ClientesController {
-  constructor(private readonly service: ClientesService) {}
+  constructor(private readonly service: ClientesService) { }
 
   @Post()
   create(@Body() dto: CreateClienteDto) {
@@ -32,8 +32,13 @@ export class ClientesController {
     @Query('incluirInactivos', new ParseBoolPipe({ optional: true }))
     incluirInactivos?: boolean,
     @Query('q') q?: string,
+    @Query('id_bodega') id_bodega?: string,
   ) {
-    return this.service.findAll({ incluirInactivos, q });
+    return this.service.findAll({
+      incluirInactivos,
+      q,
+      id_bodega: id_bodega ? Number(id_bodega) : undefined,
+    });
   }
 
   @Get('meta')

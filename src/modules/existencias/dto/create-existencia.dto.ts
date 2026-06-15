@@ -26,6 +26,12 @@ export class CreateExistenciaDto {
   cantidad?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  precio_compra_unitario?: number;
+
+  @IsOptional()
   @IsDateString()
   fecha_vencimiento?: string;
 

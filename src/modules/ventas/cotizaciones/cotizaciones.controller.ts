@@ -62,6 +62,25 @@ export class CotizacionesController {
     return this.cotizacionesService.findAll({ idBodega });
   }
 
+  @Get('costo-referencia')
+  getCostoReferencia(
+    @Query('id_cliente') idClienteRaw: string,
+    @Query('id_producto') idProductoRaw: string,
+  ) {
+    const idCliente = Number(idClienteRaw);
+    const idProducto = Number(idProductoRaw);
+
+    if (!Number.isFinite(idCliente) || idCliente <= 0) {
+      throw new BadRequestException('id_cliente inválido');
+    }
+
+    if (!Number.isFinite(idProducto) || idProducto <= 0) {
+      throw new BadRequestException('id_producto inválido');
+    }
+
+    return this.cotizacionesService.getCostoReferencia(idCliente, idProducto);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.cotizacionesService.findOne(id);

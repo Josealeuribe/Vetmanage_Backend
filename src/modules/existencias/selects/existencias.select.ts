@@ -9,6 +9,7 @@ export const existenciaListSelect =
     cantidad: true,
     cantidad_reservada: true,
     fecha_vencimiento: true,
+    precio_compra_unitario: true,
     lote: true,
     producto: {
       select: {

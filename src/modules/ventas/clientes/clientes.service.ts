@@ -12,6 +12,12 @@ import { UpdateClienteDto } from './dto/update-cliente.dto';
 const clienteIncludeRefs = Prisma.validator<Prisma.clienteInclude>()({
   tipo_documento: true,
   tipo_cliente: true,
+  bodega: {
+    select: {
+      id_bodega: true,
+      nombre_bodega: true,
+    },
+  },
   municipios: {
     select: {
       id_municipio: true,
@@ -76,28 +82,41 @@ export class ClientesService {
     id_tipo_cliente?: number;
     id_municipio?: number;
     id_tipo_doc?: number;
+    id_bodega?: number;
   }) {
-    const { id_tipo_cliente, id_municipio, id_tipo_doc } = params;
+    const { id_tipo_cliente, id_municipio, id_tipo_doc, id_bodega } = params;
 
-    const [tc, mun, td] = await Promise.all([
+    const [tc, mun, td, bod] = await Promise.all([
       id_tipo_cliente
         ? this.prisma.tipo_cliente.findUnique({ where: { id_tipo_cliente } })
         : Promise.resolve(null),
+
       id_municipio
         ? this.prisma.municipios.findUnique({ where: { id_municipio } })
         : Promise.resolve(null),
+
       id_tipo_doc
         ? this.prisma.tipo_documento.findUnique({ where: { id_tipo_doc } })
+        : Promise.resolve(null),
+
+      id_bodega
+        ? this.prisma.bodega.findFirst({
+          where: {
+            id_bodega,
+            estado: true,
+          },
+        })
         : Promise.resolve(null),
     ]);
 
     if (
       (id_tipo_cliente && !tc) ||
       (id_municipio && !mun) ||
-      (id_tipo_doc && !td)
+      (id_tipo_doc && !td) ||
+      (id_bodega && !bod)
     ) {
       throw new BadRequestException(
-        'tipo_cliente, municipio o tipo_documento inválido',
+        'tipo_cliente, municipio, tipo_documento o bodega inválida',
       );
     }
   }
@@ -109,6 +128,7 @@ export class ClientesService {
       id_tipo_cliente: dto.id_tipo_cliente,
       id_municipio: dto.id_municipio,
       id_tipo_doc: dto.id_tipo_doc,
+      id_bodega: dto.id_bodega,
     });
 
     const maxRetries = 5;
@@ -129,6 +149,7 @@ export class ClientesService {
             id_tipo_cliente: dto.id_tipo_cliente,
             id_municipio: dto.id_municipio,
             id_tipo_doc: dto.id_tipo_doc,
+            id_bodega: dto.id_bodega,
             estado: dto.estado ?? true,
           },
           include: clienteIncludeRefs,
@@ -151,12 +172,20 @@ export class ClientesService {
   }
 
   // ✅ LIST
-  async findAll(params?: { incluirInactivos?: boolean; q?: string }) {
+  async findAll(params?: {
+    incluirInactivos?: boolean;
+    q?: string;
+    id_bodega?: number;
+  }) {
     const incluirInactivos = params?.incluirInactivos ?? false;
     const q = params?.q?.trim();
+    const id_bodega = params?.id_bodega;
 
     const where: Prisma.clienteWhereInput = {
       ...(incluirInactivos ? {} : { estado: true }),
+
+      ...(id_bodega && id_bodega > 0 ? { id_bodega } : {}),
+
       ...(q
         ? {
           OR: [
@@ -196,6 +225,7 @@ export class ClientesService {
       id_tipo_cliente: dto.id_tipo_cliente,
       id_municipio: dto.id_municipio,
       id_tipo_doc: dto.id_tipo_doc,
+      id_bodega: dto.id_bodega,
     });
 
     const data: Prisma.clienteUpdateInput = {
@@ -227,6 +257,9 @@ export class ClientesService {
         ? { id_tipo_doc: dto.id_tipo_doc }
         : {}),
       ...(dto.estado !== undefined ? { estado: dto.estado } : {}),
+      ...(dto.id_bodega !== undefined
+        ? { id_bodega: dto.id_bodega }
+        : {}),
     };
 
     try {
@@ -246,18 +279,29 @@ export class ClientesService {
   }
 
   async getMeta() {
-    const [tiposDocumento, tiposCliente, municipios] = await Promise.all([
+    const [tiposDocumento, tiposCliente, municipios, bodegas] = await Promise.all([
       this.prisma.tipo_documento.findMany({
         orderBy: { id_tipo_doc: 'asc' },
       }),
+
       this.prisma.tipo_cliente.findMany({
         orderBy: { id_tipo_cliente: 'asc' },
       }),
+
       this.prisma.municipios.findMany({
         include: {
-          departamentos: true, // ajusta el nombre si tu relación no se llama así
+          departamentos: true,
         },
         orderBy: { id_municipio: 'asc' },
+      }),
+
+      this.prisma.bodega.findMany({
+        where: {
+          estado: true,
+        },
+        orderBy: {
+          nombre_bodega: 'asc',
+        },
       }),
     ]);
 
@@ -265,6 +309,7 @@ export class ClientesService {
       tiposDocumento,
       tiposCliente,
       municipios,
+      bodegas,
     };
   }
 

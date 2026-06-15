@@ -24,6 +24,7 @@ model bodega {
   traslado_traslado_id_bodega_destinoTobodega                             traslado[]             @relation("traslado_id_bodega_destinoTobodega")
   traslado_traslado_id_bodega_origenTobodega                              traslado[]             @relation("traslado_id_bodega_origenTobodega")
   facturas                                                                factura[]
+  clientes                                                                cliente[]
 
   @@index([id_municipio], map: "fk_bodega_municipio")
 }
@@ -46,28 +47,32 @@ model categoria_producto {
 }
 
 model cliente {
-  id_cliente      Int              @id @default(autoincrement()) @db.UnsignedInt
-  codigo_cliente  String?          @unique(map: "codigo_cliente") @db.VarChar(20)
-  nombre_cliente  String           @db.VarChar(150)
-  email           String?          @unique(map: "email") @db.VarChar(100)
-  telefono        String?          @db.VarChar(20)
-  direccion       String?          @db.VarChar(255)
-  num_documento   String           @unique(map: "num_documento") @db.VarChar(50)
-  id_tipo_cliente Int              @db.UnsignedInt
-  id_municipio    Int              @db.UnsignedInt
-  id_tipo_doc     Int              @db.UnsignedInt
-  estado          Boolean          @default(true)
-  municipios      municipios       @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_cliente_municipio")
-  tipo_cliente    tipo_cliente     @relation(fields: [id_tipo_cliente], references: [id_tipo_cliente], onDelete: NoAction, map: "fk_cliente_tipo_cliente")
-  tipo_documento  tipo_documento   @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_cliente_tipo_doc")
-  cotizacion      cotizacion[]
-  factura         factura[]
-  orden_venta     orden_venta[]
-  remision_venta  remision_venta[]
+  id_cliente      Int     @id @default(autoincrement()) @db.UnsignedInt
+  codigo_cliente  String? @unique(map: "codigo_cliente") @db.VarChar(20)
+  nombre_cliente  String  @db.VarChar(150)
+  email           String? @unique(map: "email") @db.VarChar(100)
+  telefono        String? @db.VarChar(20)
+  direccion       String? @db.VarChar(255)
+  num_documento   String  @unique(map: "num_documento") @db.VarChar(50)
+  id_tipo_cliente Int     @db.UnsignedInt
+  id_municipio    Int     @db.UnsignedInt
+  id_tipo_doc     Int     @db.UnsignedInt
+  id_bodega       Int     @db.UnsignedInt
+
+  estado         Boolean          @default(true)
+  municipios     municipios       @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_cliente_municipio")
+  tipo_cliente   tipo_cliente     @relation(fields: [id_tipo_cliente], references: [id_tipo_cliente], onDelete: NoAction, map: "fk_cliente_tipo_cliente")
+  tipo_documento tipo_documento   @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_cliente_tipo_doc")
+  bodega         bodega           @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_cliente_bodega")
+  cotizacion     cotizacion[]
+  factura        factura[]
+  orden_venta    orden_venta[]
+  remision_venta remision_venta[]
 
   @@index([id_municipio], map: "fk_cliente_municipio")
   @@index([id_tipo_cliente], map: "fk_cliente_tipo_cliente")
   @@index([id_tipo_doc], map: "fk_cliente_tipo_doc")
+  @@index([id_bodega], map: "fk_cliente_bodega")
 }
 
 model compras {
@@ -238,12 +243,14 @@ model detalle_remision_venta {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model detalle_traslado {
-  id_detalle    Int         @id @default(autoincrement()) @db.UnsignedInt
-  id_traslado   Int         @db.UnsignedInt
-  id_existencia Int         @db.UnsignedInt
-  cantidad      Decimal     @db.Decimal(10, 2)
-  existencias   existencias @relation(fields: [id_existencia], references: [id_existencia], onDelete: NoAction, map: "fk_detalle_existencia")
-  traslado      traslado    @relation(fields: [id_traslado], references: [id_traslado], onDelete: Cascade, map: "fk_detalle_traslado")
+  id_detalle             Int      @id @default(autoincrement()) @db.UnsignedInt
+  id_traslado            Int      @db.UnsignedInt
+  id_existencia          Int      @db.UnsignedInt
+  cantidad               Decimal  @db.Decimal(10, 2)
+  precio_compra_unitario Decimal? @db.Decimal(10, 2)
+
+  existencias existencias @relation(fields: [id_existencia], references: [id_existencia], onDelete: NoAction, map: "fk_detalle_existencia")
+  traslado    traslado    @relation(fields: [id_traslado], references: [id_traslado], onDelete: Cascade, map: "fk_detalle_traslado")
 
   @@unique([id_traslado, id_existencia], map: "uq_detalle_traslado_existencia")
   @@index([id_existencia], map: "idx_detalle_existencia")
@@ -299,6 +306,7 @@ model existencias {
   nota                   String?                  @db.VarChar(255)
   cantidad               Decimal                  @default(0.00) @db.Decimal(10, 2)
   cantidad_reservada     Decimal                  @default(0.00) @db.Decimal(10, 2)
+  precio_compra_unitario Decimal?                 @db.Decimal(10, 2)
   fecha_vencimiento      DateTime?                @db.Date
   lote                   String                   @default("") @db.VarChar(50)
   codigo_barras          String?                  @db.VarChar(100)
@@ -324,9 +332,10 @@ model factura {
   fecha_anulacion    DateTime? @db.DateTime(0)
   id_usuario_anulo   Int?      @db.UnsignedInt
 
-  id_bodega           Int?    @db.UnsignedInt
-  remisiones_snapshot String? @db.VarChar(255)
-  bodega_snapshot     String? @db.VarChar(150)
+  id_bodega                Int?    @db.UnsignedInt
+  remisiones_snapshot      String? @db.VarChar(255)
+  bodega_snapshot          String? @db.VarChar(150)
+  remisiones_snapshot_data Json?
 
   cliente         cliente        @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_factura_cliente")
   estado_factura  estado_factura @relation(fields: [id_estado_factura], references: [id_estado_factura], onDelete: NoAction, map: "fk_factura_estado")
@@ -607,14 +616,25 @@ model tipo_proveedor {
 }
 
 model traslado {
-  id_traslado                               Int                @id @default(autoincrement()) @db.UnsignedInt
-  codigo_traslado                           String?            @unique(map: "codigo_traslado") @db.VarChar(20)
-  id_bodega_origen                          Int                @db.UnsignedInt
-  id_bodega_destino                         Int                @db.UnsignedInt
-  fecha_traslado                            DateTime           @db.Date
-  nota                                      String?            @db.VarChar(255)
-  id_estado_traslado                        Int                @db.UnsignedInt
-  id_responsable                            Int?               @db.UnsignedInt
+  id_traslado        Int       @id @default(autoincrement()) @db.UnsignedInt
+  codigo_traslado    String?   @unique(map: "codigo_traslado") @db.VarChar(20)
+  id_bodega_origen   Int       @db.UnsignedInt
+  id_bodega_destino  Int       @db.UnsignedInt
+  fecha_traslado     DateTime  @db.Date
+  nota               String?   @db.VarChar(255)
+  id_estado_traslado Int       @db.UnsignedInt
+  id_responsable     Int?      @db.UnsignedInt
+  fecha_envio        DateTime? @db.DateTime(0)
+  id_usuario_envio   Int?      @db.UnsignedInt
+
+  fecha_recepcion    DateTime? @db.DateTime(0)
+  id_usuario_recibio Int?      @db.UnsignedInt
+
+  fecha_anulacion                           DateTime?          @db.DateTime(0)
+  id_usuario_anulo                          Int?               @db.UnsignedInt
+  usuario_envio                             usuario?           @relation("traslado_id_usuario_envioTousuario", fields: [id_usuario_envio], references: [id_usuario], map: "fk_traslado_usuario_envio")
+  usuario_recibio                           usuario?           @relation("traslado_id_usuario_recibioTousuario", fields: [id_usuario_recibio], references: [id_usuario], map: "fk_traslado_usuario_recibio")
+  usuario_anulo                             usuario?           @relation("traslado_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], map: "fk_traslado_usuario_anulo")
   detalle_traslado                          detalle_traslado[]
   bodega_traslado_id_bodega_destinoTobodega bodega             @relation("traslado_id_bodega_destinoTobodega", fields: [id_bodega_destino], references: [id_bodega], onDelete: NoAction, map: "fk_traslado_destino")
   estado_traslado                           estado_traslado    @relation(fields: [id_estado_traslado], references: [id_estado_traslado], onDelete: NoAction, map: "fk_traslado_estado")
@@ -626,6 +646,9 @@ model traslado {
   @@index([fecha_traslado], map: "idx_traslado_fecha")
   @@index([id_bodega_origen], map: "idx_traslado_origen")
   @@index([id_responsable], map: "fk_traslado_responsable")
+  @@index([id_usuario_envio], map: "idx_traslado_usuario_envio")
+  @@index([id_usuario_recibio], map: "idx_traslado_usuario_recibio")
+  @@index([id_usuario_anulo], map: "idx_traslado_usuario_anulo")
 }
 
 model usuario {
@@ -668,6 +691,9 @@ model usuario {
   genero                                                                 genero?                @relation(fields: [id_genero], references: [id_genero], map: "fk_usuario_genero")
   roles                                                                  roles                  @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, map: "fk_usuario_rol")
   tipo_documento                                                         tipo_documento         @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_usuario_tipo_doc")
+  traslados_enviados                                                     traslado[]             @relation("traslado_id_usuario_envioTousuario")
+  traslados_recibidos                                                    traslado[]             @relation("traslado_id_usuario_recibioTousuario")
+  traslados_anulados                                                     traslado[]             @relation("traslado_id_usuario_anuloTousuario")
 
   @@index([id_rol], map: "fk_usuario_rol")
   @@index([id_tipo_doc], map: "fk_usuario_tipo_doc")

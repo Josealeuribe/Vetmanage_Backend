@@ -117,22 +117,92 @@ export class PagosAbonosService {
     return remisionBodegaId === Number(idBodega);
   }
 
+  private getRemisionesSnapshotData(factura: any) {
+    const data = factura?.remisiones_snapshot_data;
+
+    if (Array.isArray(data)) return data;
+
+    if (typeof data === 'string') {
+      try {
+        const parsed = JSON.parse(data);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  }
+
   private matchesBodegaInFactura(factura: any, idBodega?: number) {
     if (!idBodega) return true;
 
-    const idBodegaFactura = Number(factura?.id_bodega ?? 0);
-
-    if (idBodegaFactura === Number(idBodega)) {
-      return true;
-    }
-
-    const remisiones = Array.isArray(factura?.remision_venta)
+    const remisionesVivas = Array.isArray(factura?.remision_venta)
       ? factura.remision_venta
       : [];
 
-    return remisiones.some((remision: any) =>
+    const matchRemisionesVivas = remisionesVivas.some((remision: any) =>
       this.matchesBodegaInRemision(remision, idBodega),
     );
+
+    if (matchRemisionesVivas) return true;
+
+    const snapshotData = this.getRemisionesSnapshotData(factura);
+
+    const matchSnapshot = snapshotData.some(
+      (item: any) => Number(item?.id_bodega) === Number(idBodega),
+    );
+
+    if (matchSnapshot) return true;
+
+    const idBodegaFactura = Number(factura?.id_bodega ?? 0);
+
+    return idBodegaFactura === Number(idBodega);
+  }
+
+  private fechaJson(value?: Date | string | null) {
+    if (!value) return null;
+
+    const fecha = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(fecha.getTime())) {
+      return null;
+    }
+
+    return fecha.toISOString().split('T')[0];
+  }
+
+  private construirRemisionesSnapshotData(remisiones: any[]) {
+    return remisiones.map((remision) => {
+      const resumen = this.calcularResumenRemision(remision);
+
+      return {
+        id_remision_venta: remision.id_remision_venta,
+        codigo_remision_venta:
+          remision.codigo_remision_venta ??
+          `RV-${String(remision.id_remision_venta).padStart(4, '0')}`,
+
+        fecha_creacion: this.fechaJson(remision.fecha_creacion),
+        fecha_vencimiento: this.fechaJson(remision.fecha_vencimiento),
+
+        id_orden_venta: remision.orden_venta?.id_orden_venta ?? null,
+        codigo_orden_venta:
+          remision.orden_venta?.codigo_orden_venta ??
+          (remision.orden_venta?.id_orden_venta
+            ? `OV-${String(remision.orden_venta.id_orden_venta).padStart(4, '0')}`
+            : null),
+
+        id_bodega: remision.orden_venta?.id_bodega ?? null,
+        nombre_bodega: remision.orden_venta?.bodega?.nombre_bodega ?? null,
+
+        estado_remision:
+          remision.estado_remision_venta?.nombre_estado ?? null,
+
+        subtotal: this.round2(resumen.subtotal),
+        total_iva: this.round2(resumen.total_iva),
+        total: this.round2(resumen.total),
+      };
+    });
   }
 
   private calcularResumenRemision(remision: any) {
@@ -186,37 +256,69 @@ export class PagosAbonosService {
   }
 
   private construirFacturaRespuesta(factura: any) {
-    const remisiones = factura.remision_venta.map((remision: any) => {
-      const resumen = this.calcularResumenRemision(remision);
-      return {
-        ...remision,
-        resumen,
-      };
-    });
+    const remisionesVivas = Array.isArray(factura.remision_venta)
+      ? factura.remision_venta
+      : [];
 
-    const subtotal = remisiones.reduce(
-      (acc: number, remision: any) => acc + remision.resumen.subtotal,
-      0,
+    const snapshotData = this.getRemisionesSnapshotData(factura);
+
+    const resumenDesdeRemisiones = remisionesVivas.reduce(
+      (acc: { subtotal: number; total_iva: number; total: number }, remision: any) => {
+        const resumen = this.calcularResumenRemision(remision);
+
+        return {
+          subtotal: acc.subtotal + Number(resumen.subtotal ?? 0),
+          total_iva: acc.total_iva + Number(resumen.total_iva ?? 0),
+          total: acc.total + Number(resumen.total ?? 0),
+        };
+      },
+      {
+        subtotal: 0,
+        total_iva: 0,
+        total: 0,
+      },
     );
 
-    const totalIva = remisiones.reduce(
-      (acc: number, remision: any) => acc + remision.resumen.total_iva,
-      0,
+    const resumenDesdeSnapshot = snapshotData.reduce(
+      (acc: { subtotal: number; total_iva: number; total: number }, item: any) => {
+        return {
+          subtotal: acc.subtotal + Number(item?.subtotal ?? 0),
+          total_iva: acc.total_iva + Number(item?.total_iva ?? 0),
+          total: acc.total + Number(item?.total ?? 0),
+        };
+      },
+      {
+        subtotal: 0,
+        total_iva: 0,
+        total: 0,
+      },
     );
 
-    const totalAbonado = factura.pagos_abonos
-      .filter((pago: any) => pago.estado)
-      .reduce((acc: number, pago: any) => acc + Number(pago.valor), 0);
+    const resumenBase =
+      remisionesVivas.length > 0 ? resumenDesdeRemisiones : resumenDesdeSnapshot;
 
-    const totalFactura = Number(factura.total);
-    const saldoPendiente = Math.max(0, totalFactura - totalAbonado);
+    const totalFactura = Number(factura.total ?? resumenBase.total ?? 0);
+
+    const totalAbonado = (factura.pagos_abonos ?? [])
+      .filter((pago: any) => pago.estado === true)
+      .reduce((acc: number, pago: any) => acc + Number(pago.valor ?? 0), 0);
+
+    const saldoPendiente = Math.max(totalFactura - totalAbonado, 0);
 
     return {
       ...factura,
-      remision_venta: remisiones,
+      total: this.round2(totalFactura),
+
+      remision_venta: remisionesVivas.map((remision: any) => ({
+        ...remision,
+        resumen: this.calcularResumenRemision(remision),
+      })),
+
+      pagos_abonos: factura.pagos_abonos ?? [],
+
       resumen_pago: {
-        subtotal: this.round2(subtotal),
-        total_iva: this.round2(totalIva),
+        subtotal: this.round2(resumenBase.subtotal),
+        total_iva: this.round2(resumenBase.total_iva),
         total_factura: this.round2(totalFactura),
         total_abonado: this.round2(totalAbonado),
         saldo_pendiente: this.round2(saldoPendiente),
@@ -265,7 +367,7 @@ export class PagosAbonosService {
     });
 
     if (!factura) {
-      throw new NotFoundException('Factura no existe');
+      throw new NotFoundException('Pago no existe');
     }
 
     const totalFactura = Number(factura.total);
@@ -327,6 +429,68 @@ export class PagosAbonosService {
       metodos_pago: metodosPago,
       estados_factura: estadosFactura,
     };
+  }
+
+  async findClientesConRemisionesPendientes(idBodega?: number) {
+    const remisiones = await this.prisma.remision_venta.findMany({
+      where: {
+        id_factura: null,
+      },
+      include: {
+        cliente: {
+          include: {
+            tipo_documento: true,
+          },
+        },
+        estado_remision_venta: true,
+        orden_venta: {
+          include: {
+            bodega: true,
+          },
+        },
+      },
+      orderBy: {
+        id_remision_venta: 'desc',
+      },
+    });
+
+    const remisionesValidas = remisiones.filter(
+      (remision) =>
+        this.matchesBodegaInRemision(remision, idBodega) &&
+        this.isEstadoEntregado(remision.estado_remision_venta?.nombre_estado) &&
+        !this.isEstadoAnulado(remision.estado_remision_venta?.nombre_estado),
+    );
+
+    const clientesMap = new Map<number, any>();
+
+    for (const remision of remisionesValidas) {
+      const cliente = remision.cliente;
+
+      if (!cliente || !cliente.estado) continue;
+
+      const actual = clientesMap.get(cliente.id_cliente);
+
+      if (actual) {
+        clientesMap.set(cliente.id_cliente, {
+          ...actual,
+          remisiones_pendientes_count:
+            Number(actual.remisiones_pendientes_count ?? 0) + 1,
+        });
+      } else {
+        clientesMap.set(cliente.id_cliente, {
+          ...cliente,
+          remisiones_pendientes_count: 1,
+        });
+      }
+    }
+
+    return Array.from(clientesMap.values()).sort((a, b) =>
+      String(a.nombre_cliente ?? '').localeCompare(
+        String(b.nombre_cliente ?? ''),
+        'es',
+        { sensitivity: 'base' },
+      ),
+    );
   }
 
   async findRemisionesPendientesPorCliente(idCliente: number, idBodega?: number) {
@@ -407,11 +571,16 @@ export class PagosAbonosService {
 
       const fechaFactura = this.parseFecha(dto.fecha_factura, 'Fecha de pago');
 
-      const fechaVencimiento = dto.fecha_vencimiento
-        ? this.parseFecha(dto.fecha_vencimiento, 'Fecha de vencimiento')
-        : null;
+      if (!dto.fecha_vencimiento) {
+        throw new BadRequestException('La fecha de vencimiento es obligatoria');
+      }
 
-      if (fechaVencimiento && fechaVencimiento < fechaFactura) {
+      const fechaVencimiento = this.parseFecha(
+        dto.fecha_vencimiento,
+        'Fecha de vencimiento',
+      );
+
+      if (fechaVencimiento < fechaFactura) {
         throw new BadRequestException(
           'La fecha de vencimiento no puede ser anterior a la fecha del pago',
         );
@@ -477,25 +646,21 @@ export class PagosAbonosService {
         new Set(
           remisiones
             .map((remision) => remision.orden_venta?.id_bodega)
-            .filter((id): id is number => Boolean(id)),
+            .filter((id): id is number => Number.isFinite(Number(id)) && Number(id) > 0),
         ),
       );
 
-      if (bodegaIds.length > 1) {
-        throw new BadRequestException(
-          'No puedes crear un pago con remisiones de diferentes bodegas',
-        );
-      }
+      const idBodegaPago = bodegaIds.length === 1 ? bodegaIds[0] : null;
 
-      const idBodegaPago = bodegaIds[0] ?? null;
-
-      const remisionesSnapshot = remisiones
-        .map(
-          (remision) =>
-            remision.codigo_remision_venta ??
-            `RV-${String(remision.id_remision_venta).padStart(4, '0')}`,
-        )
-        .join(', ');
+      const remisionesSnapshot =
+        remisiones
+          .map(
+            (remision) =>
+              remision.codigo_remision_venta ??
+              `RV-${String(remision.id_remision_venta).padStart(4, '0')}`,
+          )
+          .filter(Boolean)
+          .join(', ') || null;
 
       const bodegaSnapshot =
         Array.from(
@@ -506,10 +671,19 @@ export class PagosAbonosService {
           ),
         ).join(', ') || null;
 
+      const remisionesSnapshotData =
+        this.construirRemisionesSnapshotData(remisiones);
+
       const totalFactura = remisiones.reduce((acc, remision) => {
         const resumen = this.calcularResumenRemision(remision);
         return acc + resumen.total;
       }, 0);
+
+      if (totalFactura <= 0) {
+        throw new BadRequestException(
+          'El total del pago debe ser mayor a cero',
+        );
+      }
 
       const estadoPendienteId = await this.buscarEstadoFacturaId(
         tx,
@@ -536,11 +710,14 @@ export class PagosAbonosService {
           id_usuario_creador: idUsuario,
           remisiones_snapshot: remisionesSnapshot,
           bodega_snapshot: bodegaSnapshot,
+          remisiones_snapshot_data: remisionesSnapshotData,
         },
       });
 
       await tx.factura.update({
-        where: { id_factura: facturaCreada.id_factura },
+        where: {
+          id_factura: facturaCreada.id_factura,
+        },
         data: {
           codigo_factura: `PG-${String(facturaCreada.id_factura).padStart(4, '0')}`,
         },
@@ -763,7 +940,17 @@ export class PagosAbonosService {
         include: {
           estado_factura: true,
           pagos_abonos: true,
-          remision_venta: true,
+          remision_venta: {
+            include: {
+              estado_remision_venta: true,
+              orden_venta: {
+                include: {
+                  bodega: true,
+                },
+              },
+              detalle_remision_venta: true,
+            },
+          },
         },
       });
 
@@ -797,15 +984,38 @@ export class PagosAbonosService {
         true,
       );
 
-      await tx.remision_venta.updateMany({
-        where: {
-          id_factura: idFactura,
-        },
-        data: {
-          id_factura: null,
-          id_estado_remision_venta: estadoEntregadaRemisionId!,
-        },
-      });
+      const remisionesSnapshot =
+        factura.remisiones_snapshot ||
+        factura.remision_venta
+          .map(
+            (remision) =>
+              remision.codigo_remision_venta ??
+              `RV-${String(remision.id_remision_venta).padStart(4, '0')}`,
+          )
+          .filter(Boolean)
+          .join(', ') ||
+        null;
+
+      const bodegaSnapshot =
+        factura.bodega_snapshot ||
+        Array.from(
+          new Set(
+            factura.remision_venta
+              .map((remision) => remision.orden_venta?.bodega?.nombre_bodega)
+              .filter(Boolean),
+          ),
+        ).join(', ') ||
+        null;
+
+      const idBodegaPago =
+        factura.id_bodega ??
+        factura.remision_venta.find((remision) => remision.orden_venta?.id_bodega)
+          ?.orden_venta?.id_bodega ??
+        null;
+
+      const remisionesSnapshotData =
+        factura.remisiones_snapshot_data ??
+        this.construirRemisionesSnapshotData(factura.remision_venta);
 
       await tx.factura.update({
         where: {
@@ -815,6 +1025,20 @@ export class PagosAbonosService {
           id_estado_factura: estadoAnuladaFacturaId!,
           fecha_anulacion: new Date(),
           id_usuario_anulo: idUsuario,
+          id_bodega: idBodegaPago,
+          remisiones_snapshot: remisionesSnapshot,
+          bodega_snapshot: bodegaSnapshot,
+          remisiones_snapshot_data: remisionesSnapshotData,
+        },
+      });
+
+      await tx.remision_venta.updateMany({
+        where: {
+          id_factura: idFactura,
+        },
+        data: {
+          id_factura: null,
+          id_estado_remision_venta: estadoEntregadaRemisionId!,
         },
       });
     });

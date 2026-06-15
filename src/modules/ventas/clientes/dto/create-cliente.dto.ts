@@ -55,4 +55,8 @@ export class CreateClienteDto {
   @IsOptional()
   @IsBoolean()
   estado?: boolean;
+
+  @IsInt()
+  @Min(1)
+  id_bodega: number;
 }
