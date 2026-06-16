@@ -23,6 +23,8 @@ model bodega {
   remision_compra                                                         remision_compra[]
   traslado_traslado_id_bodega_destinoTobodega                             traslado[]             @relation("traslado_id_bodega_destinoTobodega")
   traslado_traslado_id_bodega_origenTobodega                              traslado[]             @relation("traslado_id_bodega_origenTobodega")
+  facturas                                                                factura[]
+  clientes                                                                cliente[]
 
   @@index([id_municipio], map: "fk_bodega_municipio")
 }
@@ -45,28 +47,32 @@ model categoria_producto {
 }
 
 model cliente {
-  id_cliente      Int              @id @default(autoincrement()) @db.UnsignedInt
-  codigo_cliente  String?          @unique(map: "codigo_cliente") @db.VarChar(20)
-  nombre_cliente  String           @db.VarChar(150)
-  email           String?          @unique(map: "email") @db.VarChar(100)
-  telefono        String?          @db.VarChar(20)
-  direccion       String?          @db.VarChar(255)
-  num_documento   String           @unique(map: "num_documento") @db.VarChar(50)
-  id_tipo_cliente Int              @db.UnsignedInt
-  id_municipio    Int              @db.UnsignedInt
-  id_tipo_doc     Int              @db.UnsignedInt
-  estado          Boolean          @default(true)
-  municipios      municipios       @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_cliente_municipio")
-  tipo_cliente    tipo_cliente     @relation(fields: [id_tipo_cliente], references: [id_tipo_cliente], onDelete: NoAction, map: "fk_cliente_tipo_cliente")
-  tipo_documento  tipo_documento   @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_cliente_tipo_doc")
-  cotizacion      cotizacion[]
-  factura         factura[]
-  orden_venta     orden_venta[]
-  remision_venta  remision_venta[]
+  id_cliente      Int     @id @default(autoincrement()) @db.UnsignedInt
+  codigo_cliente  String? @unique(map: "codigo_cliente") @db.VarChar(20)
+  nombre_cliente  String  @db.VarChar(150)
+  email           String? @unique(map: "email") @db.VarChar(100)
+  telefono        String? @db.VarChar(20)
+  direccion       String? @db.VarChar(255)
+  num_documento   String  @unique(map: "num_documento") @db.VarChar(50)
+  id_tipo_cliente Int     @db.UnsignedInt
+  id_municipio    Int     @db.UnsignedInt
+  id_tipo_doc     Int     @db.UnsignedInt
+  id_bodega       Int     @db.UnsignedInt
+
+  estado         Boolean          @default(true)
+  municipios     municipios       @relation(fields: [id_municipio], references: [id_municipio], onDelete: NoAction, map: "fk_cliente_municipio")
+  tipo_cliente   tipo_cliente     @relation(fields: [id_tipo_cliente], references: [id_tipo_cliente], onDelete: NoAction, map: "fk_cliente_tipo_cliente")
+  tipo_documento tipo_documento   @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_cliente_tipo_doc")
+  bodega         bodega           @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_cliente_bodega")
+  cotizacion     cotizacion[]
+  factura        factura[]
+  orden_venta    orden_venta[]
+  remision_venta remision_venta[]
 
   @@index([id_municipio], map: "fk_cliente_municipio")
   @@index([id_tipo_cliente], map: "fk_cliente_tipo_cliente")
   @@index([id_tipo_doc], map: "fk_cliente_tipo_doc")
+  @@index([id_bodega], map: "fk_cliente_bodega")
 }
 
 model compras {
@@ -116,10 +122,16 @@ model cotizacion {
   id_usuario_creador   Int                  @db.UnsignedInt
   id_estado_cotizacion Int                  @db.UnsignedInt
   observaciones        String?              @db.VarChar(255)
+  fecha_aprobacion     DateTime?            @db.DateTime(0)
+  id_usuario_aprobo    Int?                 @db.UnsignedInt
+  fecha_anulacion      DateTime?            @db.DateTime(0)
+  id_usuario_anulo     Int?                 @db.UnsignedInt
   bodega               bodega               @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_cotizacion_bodega")
   cliente              cliente              @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_cotizacion_cliente")
   estado_cotizacion    estado_cotizacion    @relation(fields: [id_estado_cotizacion], references: [id_estado_cotizacion], onDelete: NoAction, map: "fk_cotizacion_estado")
   usuario              usuario              @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_cotizacion_usuario")
+  usuario_anulo        usuario?             @relation("cotizacion_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_cotizacion_usuario_anulo")
+  usuario_aprobo       usuario?             @relation("cotizacion_id_usuario_aproboTousuario", fields: [id_usuario_aprobo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_cotizacion_usuario_aprobo")
   detalle_cotizacion   detalle_cotizacion[]
   orden_venta          orden_venta?
 
@@ -128,6 +140,8 @@ model cotizacion {
   @@index([id_bodega], map: "idx_cotizacion_bodega")
   @@index([id_cliente], map: "idx_cotizacion_cliente")
   @@index([fecha], map: "idx_cotizacion_fecha")
+  @@index([id_usuario_aprobo], map: "idx_cotizacion_usuario_aprobo")
+  @@index([id_usuario_anulo], map: "idx_cotizacion_usuario_anulo")
 }
 
 model departamentos {
@@ -229,12 +243,14 @@ model detalle_remision_venta {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model detalle_traslado {
-  id_detalle    Int         @id @default(autoincrement()) @db.UnsignedInt
-  id_traslado   Int         @db.UnsignedInt
-  id_existencia Int         @db.UnsignedInt
-  cantidad      Decimal     @db.Decimal(10, 2)
-  existencias   existencias @relation(fields: [id_existencia], references: [id_existencia], onDelete: NoAction, map: "fk_detalle_existencia")
-  traslado      traslado    @relation(fields: [id_traslado], references: [id_traslado], onDelete: Cascade, map: "fk_detalle_traslado")
+  id_detalle             Int      @id @default(autoincrement()) @db.UnsignedInt
+  id_traslado            Int      @db.UnsignedInt
+  id_existencia          Int      @db.UnsignedInt
+  cantidad               Decimal  @db.Decimal(10, 2)
+  precio_compra_unitario Decimal? @db.Decimal(10, 2)
+
+  existencias existencias @relation(fields: [id_existencia], references: [id_existencia], onDelete: NoAction, map: "fk_detalle_existencia")
+  traslado    traslado    @relation(fields: [id_traslado], references: [id_traslado], onDelete: Cascade, map: "fk_detalle_traslado")
 
   @@unique([id_traslado, id_existencia], map: "uq_detalle_traslado_existencia")
   @@index([id_existencia], map: "idx_detalle_existencia")
@@ -290,6 +306,7 @@ model existencias {
   nota                   String?                  @db.VarChar(255)
   cantidad               Decimal                  @default(0.00) @db.Decimal(10, 2)
   cantidad_reservada     Decimal                  @default(0.00) @db.Decimal(10, 2)
+  precio_compra_unitario Decimal?                 @db.Decimal(10, 2)
   fecha_vencimiento      DateTime?                @db.Date
   lote                   String                   @default("") @db.VarChar(50)
   codigo_barras          String?                  @db.VarChar(100)
@@ -303,22 +320,38 @@ model existencias {
 }
 
 model factura {
-  id_factura        Int              @id @default(autoincrement()) @db.UnsignedInt
-  codigo_factura    String           @unique(map: "codigo_factura") @db.VarChar(50)
-  fecha_factura     DateTime         @db.Date
-  fecha_vencimiento DateTime?        @db.Date
-  total             Decimal          @db.Decimal(10, 2)
-  nota              String?          @db.VarChar(255)
-  id_cliente        Int              @db.UnsignedInt
-  id_estado_factura Int              @db.UnsignedInt
-  cliente           cliente          @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_factura_cliente")
-  estado_factura    estado_factura   @relation(fields: [id_estado_factura], references: [id_estado_factura], onDelete: NoAction, map: "fk_factura_estado")
-  pagos_abonos      pagos_abonos[]
-  remision_venta    remision_venta[]
+  id_factura         Int       @id @default(autoincrement()) @db.UnsignedInt
+  codigo_factura     String    @unique(map: "codigo_factura") @db.VarChar(50)
+  fecha_factura      DateTime  @db.Date
+  fecha_vencimiento  DateTime? @db.Date
+  total              Decimal   @db.Decimal(10, 2)
+  nota               String?   @db.VarChar(255)
+  id_cliente         Int       @db.UnsignedInt
+  id_estado_factura  Int       @db.UnsignedInt
+  id_usuario_creador Int?      @db.UnsignedInt
+  fecha_anulacion    DateTime? @db.DateTime(0)
+  id_usuario_anulo   Int?      @db.UnsignedInt
+
+  id_bodega                Int?    @db.UnsignedInt
+  remisiones_snapshot      String? @db.VarChar(255)
+  bodega_snapshot          String? @db.VarChar(150)
+  remisiones_snapshot_data Json?
+
+  cliente         cliente        @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_factura_cliente")
+  estado_factura  estado_factura @relation(fields: [id_estado_factura], references: [id_estado_factura], onDelete: NoAction, map: "fk_factura_estado")
+  usuario_creador usuario?       @relation("factura_id_usuario_creadorTousuario", fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_factura_usuario_creador")
+  usuario_anulo   usuario?       @relation("factura_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_factura_usuario_anulo")
+  bodega          bodega?        @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_factura_bodega")
+
+  pagos_abonos   pagos_abonos[]
+  remision_venta remision_venta[]
 
   @@index([id_estado_factura], map: "fk_factura_estado")
   @@index([id_cliente], map: "idx_factura_cliente")
   @@index([fecha_factura], map: "idx_factura_fecha")
+  @@index([id_usuario_creador], map: "idx_factura_usuario_creador")
+  @@index([id_usuario_anulo], map: "idx_factura_usuario_anulo")
+  @@index([id_bodega], map: "idx_factura_bodega")
 }
 
 model iva {
@@ -360,6 +393,10 @@ model orden_venta {
   id_termino_pago       Int                   @db.UnsignedInt
   id_usuario            Int                   @db.UnsignedInt
   id_cotizacion         Int?                  @unique(map: "uq_ov_cotizacion") @db.UnsignedInt
+  fecha_aprobacion      DateTime?             @db.DateTime(0)
+  id_usuario_aprobo     Int?                  @db.UnsignedInt
+  fecha_anulacion       DateTime?             @db.DateTime(0)
+  id_usuario_anulo      Int?                  @db.UnsignedInt
   detalle_orden_venta   detalle_orden_venta[]
   bodega                bodega                @relation(fields: [id_bodega], references: [id_bodega], onDelete: NoAction, map: "fk_ov_bodega")
   cliente               cliente               @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_ov_cliente")
@@ -367,6 +404,8 @@ model orden_venta {
   estado_orden_venta    estado_orden_venta    @relation(fields: [id_estado_orden_venta], references: [id_estado_orden_venta], onDelete: NoAction, map: "fk_ov_estado")
   termino_pago          termino_pago          @relation(fields: [id_termino_pago], references: [id_termino_pago], onDelete: NoAction, map: "fk_ov_termino")
   usuario               usuario               @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, map: "fk_ov_usuario")
+  usuario_aprobo        usuario?              @relation("orden_venta_id_usuario_aproboTousuario", fields: [id_usuario_aprobo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_ov_usuario_aprobo")
+  usuario_anulo         usuario?              @relation("orden_venta_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_ov_usuario_anulo")
   remision_venta        remision_venta[]
 
   @@index([id_estado_orden_venta], map: "fk_ov_estado")
@@ -375,22 +414,32 @@ model orden_venta {
   @@index([id_bodega], map: "idx_ov_bodega")
   @@index([id_cliente], map: "idx_ov_cliente")
   @@index([fecha_creacion], map: "idx_ov_fecha")
+  @@index([id_usuario_aprobo], map: "idx_ov_usuario_aprobo")
+  @@index([id_usuario_anulo], map: "idx_ov_usuario_anulo")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model pagos_abonos {
-  id_pago     Int         @id @default(autoincrement()) @db.UnsignedInt
-  fecha_pago  DateTime    @db.Date
-  estado      Boolean     @default(true)
-  valor       Decimal     @db.Decimal(10, 2)
-  id_metodo   Int         @db.UnsignedInt
-  id_factura  Int         @db.UnsignedInt
-  factura     factura     @relation(fields: [id_factura], references: [id_factura], onDelete: NoAction, map: "fk_pago_factura")
-  metodo_pago metodo_pago @relation(fields: [id_metodo], references: [id_metodo], onDelete: NoAction, map: "fk_pago_metodo")
+  id_pago             Int       @id @default(autoincrement()) @db.UnsignedInt
+  fecha_pago          DateTime  @db.Date
+  estado              Boolean   @default(true)
+  valor               Decimal   @db.Decimal(10, 2)
+  id_metodo           Int       @db.UnsignedInt
+  id_factura          Int       @db.UnsignedInt
+  id_usuario_registro Int?      @db.UnsignedInt
+  fecha_anulacion     DateTime? @db.DateTime(0)
+  id_usuario_anulo    Int?      @db.UnsignedInt
+
+  factura          factura     @relation(fields: [id_factura], references: [id_factura], onDelete: NoAction, map: "fk_pago_factura")
+  metodo_pago      metodo_pago @relation(fields: [id_metodo], references: [id_metodo], onDelete: NoAction, map: "fk_pago_metodo")
+  usuario_registro usuario?    @relation("pagos_abonos_id_usuario_registroTousuario", fields: [id_usuario_registro], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_pago_usuario_registro")
+  usuario_anulo    usuario?    @relation("pagos_abonos_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_pago_usuario_anulo")
 
   @@index([id_metodo], map: "fk_pago_metodo")
   @@index([id_factura], map: "idx_pago_factura")
   @@index([fecha_pago], map: "idx_pago_fecha")
+  @@index([id_usuario_registro], map: "idx_pago_usuario_registro")
+  @@index([id_usuario_anulo], map: "idx_pago_usuario_anulo")
 }
 
 model paises {
@@ -497,12 +546,18 @@ model remision_venta {
   firma_digital            Bytes?
   nombre_firmante          String?                  @db.VarChar(150)
   fecha_firma              DateTime?                @db.DateTime(0)
+  fecha_despacho           DateTime?                @db.DateTime(0)
+  id_usuario_despacho      Int?                     @db.UnsignedInt
+  fecha_anulacion          DateTime?                @db.DateTime(0)
+  id_usuario_anulo         Int?                     @db.UnsignedInt
   detalle_remision_venta   detalle_remision_venta[]
   cliente                  cliente                  @relation(fields: [id_cliente], references: [id_cliente], onDelete: NoAction, map: "fk_rv_cliente")
   estado_remision_venta    estado_remision_venta    @relation(fields: [id_estado_remision_venta], references: [id_estado_remision_venta], onDelete: NoAction, map: "fk_rv_estado")
   factura                  factura?                 @relation(fields: [id_factura], references: [id_factura], map: "fk_rv_factura")
   orden_venta              orden_venta              @relation(fields: [id_orden_venta], references: [id_orden_venta], onDelete: NoAction, map: "fk_rv_orden")
   usuario                  usuario                  @relation(fields: [id_usuario_creador], references: [id_usuario], onDelete: NoAction, map: "fk_rv_usuario")
+  usuario_despacho         usuario?                 @relation("remision_venta_id_usuario_despachoTousuario", fields: [id_usuario_despacho], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_rv_usuario_despacho")
+  usuario_anulo            usuario?                 @relation("remision_venta_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "fk_rv_usuario_anulo")
 
   @@index([id_cliente], map: "fk_rv_cliente")
   @@index([id_estado_remision_venta], map: "fk_rv_estado")
@@ -510,6 +565,8 @@ model remision_venta {
   @@index([id_usuario_creador], map: "fk_rv_usuario")
   @@index([fecha_creacion], map: "idx_rv_fecha")
   @@index([id_orden_venta], map: "idx_rv_orden")
+  @@index([id_usuario_despacho], map: "idx_rv_usuario_despacho")
+  @@index([id_usuario_anulo], map: "idx_rv_usuario_anulo")
 }
 
 model roles {
@@ -559,14 +616,25 @@ model tipo_proveedor {
 }
 
 model traslado {
-  id_traslado                               Int                @id @default(autoincrement()) @db.UnsignedInt
-  codigo_traslado                           String?            @unique(map: "codigo_traslado") @db.VarChar(20)
-  id_bodega_origen                          Int                @db.UnsignedInt
-  id_bodega_destino                         Int                @db.UnsignedInt
-  fecha_traslado                            DateTime           @db.Date
-  nota                                      String?            @db.VarChar(255)
-  id_estado_traslado                        Int                @db.UnsignedInt
-  id_responsable                            Int?               @db.UnsignedInt
+  id_traslado        Int       @id @default(autoincrement()) @db.UnsignedInt
+  codigo_traslado    String?   @unique(map: "codigo_traslado") @db.VarChar(20)
+  id_bodega_origen   Int       @db.UnsignedInt
+  id_bodega_destino  Int       @db.UnsignedInt
+  fecha_traslado     DateTime  @db.Date
+  nota               String?   @db.VarChar(255)
+  id_estado_traslado Int       @db.UnsignedInt
+  id_responsable     Int?      @db.UnsignedInt
+  fecha_envio        DateTime? @db.DateTime(0)
+  id_usuario_envio   Int?      @db.UnsignedInt
+
+  fecha_recepcion    DateTime? @db.DateTime(0)
+  id_usuario_recibio Int?      @db.UnsignedInt
+
+  fecha_anulacion                           DateTime?          @db.DateTime(0)
+  id_usuario_anulo                          Int?               @db.UnsignedInt
+  usuario_envio                             usuario?           @relation("traslado_id_usuario_envioTousuario", fields: [id_usuario_envio], references: [id_usuario], map: "fk_traslado_usuario_envio")
+  usuario_recibio                           usuario?           @relation("traslado_id_usuario_recibioTousuario", fields: [id_usuario_recibio], references: [id_usuario], map: "fk_traslado_usuario_recibio")
+  usuario_anulo                             usuario?           @relation("traslado_id_usuario_anuloTousuario", fields: [id_usuario_anulo], references: [id_usuario], map: "fk_traslado_usuario_anulo")
   detalle_traslado                          detalle_traslado[]
   bodega_traslado_id_bodega_destinoTobodega bodega             @relation("traslado_id_bodega_destinoTobodega", fields: [id_bodega_destino], references: [id_bodega], onDelete: NoAction, map: "fk_traslado_destino")
   estado_traslado                           estado_traslado    @relation(fields: [id_estado_traslado], references: [id_estado_traslado], onDelete: NoAction, map: "fk_traslado_estado")
@@ -578,6 +646,9 @@ model traslado {
   @@index([fecha_traslado], map: "idx_traslado_fecha")
   @@index([id_bodega_origen], map: "idx_traslado_origen")
   @@index([id_responsable], map: "fk_traslado_responsable")
+  @@index([id_usuario_envio], map: "idx_traslado_usuario_envio")
+  @@index([id_usuario_recibio], map: "idx_traslado_usuario_recibio")
+  @@index([id_usuario_anulo], map: "idx_traslado_usuario_anulo")
 }
 
 model usuario {
@@ -599,17 +670,30 @@ model usuario {
   compras_anuladas                                                       compras[]              @relation("compras_id_usuario_anuloTousuario")
   compras_aprobadas                                                      compras[]              @relation("compras_id_usuario_aproboTousuario")
   cotizacion                                                             cotizacion[]
+  cotizaciones_anuladas                                                  cotizacion[]           @relation("cotizacion_id_usuario_anuloTousuario")
+  cotizaciones_aprobadas                                                 cotizacion[]           @relation("cotizacion_id_usuario_aproboTousuario")
   notificacion_usuario                                                   notificacion_usuario[]
   orden_venta                                                            orden_venta[]
+  ordenes_venta_aprobadas                                                orden_venta[]          @relation("orden_venta_id_usuario_aproboTousuario")
+  ordenes_venta_anuladas                                                 orden_venta[]          @relation("orden_venta_id_usuario_anuloTousuario")
   password_setup_tokens                                                  password_setup_token[]
   remision_compra                                                        remision_compra[]
   remision_compra_usuario_anulo                                          remision_compra[]      @relation("remision_compra_id_usuario_anuloTousuario")
   remision_compra_remision_compra_id_usuario_aplico_existenciasTousuario remision_compra[]      @relation("remision_compra_id_usuario_aplico_existenciasTousuario")
   remision_venta                                                         remision_venta[]
+  remisiones_venta_despachadas                                           remision_venta[]       @relation("remision_venta_id_usuario_despachoTousuario")
+  remisiones_venta_anuladas                                              remision_venta[]       @relation("remision_venta_id_usuario_anuloTousuario")
+  facturas_creadas                                                       factura[]              @relation("factura_id_usuario_creadorTousuario")
+  facturas_anuladas                                                      factura[]              @relation("factura_id_usuario_anuloTousuario")
+  pagos_registrados                                                      pagos_abonos[]         @relation("pagos_abonos_id_usuario_registroTousuario")
+  pagos_anulados                                                         pagos_abonos[]         @relation("pagos_abonos_id_usuario_anuloTousuario")
   traslado                                                               traslado[]
   genero                                                                 genero?                @relation(fields: [id_genero], references: [id_genero], map: "fk_usuario_genero")
   roles                                                                  roles                  @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, map: "fk_usuario_rol")
   tipo_documento                                                         tipo_documento         @relation(fields: [id_tipo_doc], references: [id_tipo_doc], onDelete: NoAction, map: "fk_usuario_tipo_doc")
+  traslados_enviados                                                     traslado[]             @relation("traslado_id_usuario_envioTousuario")
+  traslados_recibidos                                                    traslado[]             @relation("traslado_id_usuario_recibioTousuario")
+  traslados_anulados                                                     traslado[]             @relation("traslado_id_usuario_anuloTousuario")
 
   @@index([id_rol], map: "fk_usuario_rol")
   @@index([id_tipo_doc], map: "fk_usuario_tipo_doc")

@@ -265,7 +265,10 @@ export class TrasladosService {
         this.ESTADO_EN_TRANSITO,
         this.ESTADO_ANULADO,
       ],
-      [this.ESTADO_EN_TRANSITO]: [this.ESTADO_RECIBIDO],
+      [this.ESTADO_EN_TRANSITO]: [
+        this.ESTADO_RECIBIDO,
+        this.ESTADO_ANULADO,
+      ],
       [this.ESTADO_RECIBIDO]: [],
       [this.ESTADO_ANULADO]: [],
     };
@@ -297,6 +300,7 @@ export class TrasladosService {
         id_producto: true,
         cantidad: true,
         cantidad_reservada: true,
+        precio_compra_unitario: true,
         lote: true,
         fecha_vencimiento: true,
         nota: true,
@@ -335,6 +339,52 @@ export class TrasladosService {
     }
   }
 
+  private async getDetalleTrasladoConCosto(
+    tx: Prisma.TransactionClient,
+    detalle: { id_existencia: number; cantidad: number | string }[],
+  ) {
+    const detallePlano = this.detallePlano(detalle);
+    const detalleAgrupado = this.validarDetalleSinDuplicados(detallePlano);
+    const existenciaIds = [...detalleAgrupado.keys()];
+
+    const existencias = await tx.existencias.findMany({
+      where: {
+        id_existencia: {
+          in: existenciaIds,
+        },
+      },
+      select: {
+        id_existencia: true,
+        precio_compra_unitario: true,
+      },
+    });
+
+    const existenciasMap = new Map(
+      existencias.map((existencia) => [
+        existencia.id_existencia,
+        existencia,
+      ]),
+    );
+
+    return [...detalleAgrupado.entries()].map(([idExistencia, cantidad]) => {
+      const existencia = existenciasMap.get(idExistencia);
+
+      if (!existencia) {
+        throw new BadRequestException(`Existencia inválida: ${idExistencia}`);
+      }
+
+      return {
+        id_existencia: idExistencia,
+        cantidad: new Prisma.Decimal(cantidad),
+        precio_compra_unitario:
+          existencia.precio_compra_unitario !== null &&
+            existencia.precio_compra_unitario !== undefined
+            ? new Prisma.Decimal(existencia.precio_compra_unitario)
+            : null,
+      };
+    });
+  }
+
   private async procesarInventarioTraslado(
     tx: Prisma.TransactionClient,
     idTraslado: number,
@@ -350,6 +400,7 @@ export class TrasladosService {
           select: {
             id_existencia: true,
             cantidad: true,
+            precio_compra_unitario: true,
             existencias: {
               select: {
                 id_existencia: true,
@@ -357,6 +408,7 @@ export class TrasladosService {
                 id_bodega: true,
                 cantidad: true,
                 cantidad_reservada: true,
+                precio_compra_unitario: true,
                 lote: true,
                 fecha_vencimiento: true,
                 nota: true,
@@ -382,7 +434,17 @@ export class TrasladosService {
       const origen = item.existencias;
       const cantidadMover = new Prisma.Decimal(item.cantidad);
 
+      const costoTrasladado =
+        item.precio_compra_unitario !== null &&
+          item.precio_compra_unitario !== undefined
+          ? new Prisma.Decimal(item.precio_compra_unitario)
+          : origen.precio_compra_unitario !== null &&
+            origen.precio_compra_unitario !== undefined
+            ? new Prisma.Decimal(origen.precio_compra_unitario)
+            : null;
+
       const cantidadOrigenActual = new Prisma.Decimal(origen.cantidad);
+
       if (cantidadOrigenActual.lt(cantidadMover)) {
         throw new BadRequestException(
           `La existencia ${origen.id_existencia} no tiene cantidad suficiente para procesar el traslado`,
@@ -399,14 +461,11 @@ export class TrasladosService {
         );
       }
 
-      const nuevaCantidadOrigen = cantidadOrigenActual.sub(cantidadMover);
-      const nuevaCantidadReservada = cantidadReservadaActual.sub(cantidadMover);
-
       await tx.existencias.update({
         where: { id_existencia: origen.id_existencia },
         data: {
-          cantidad: nuevaCantidadOrigen,
-          cantidad_reservada: nuevaCantidadReservada,
+          cantidad: cantidadOrigenActual.sub(cantidadMover),
+          cantidad_reservada: cantidadReservadaActual.sub(cantidadMover),
         },
       });
 
@@ -414,23 +473,47 @@ export class TrasladosService {
         where: {
           id_producto: origen.id_producto,
           id_bodega: traslado.id_bodega_destino,
-          lote: origen.lote,
-          fecha_vencimiento: origen.fecha_vencimiento,
-          codigo_barras: origen.codigo_barras,
+          lote: origen.lote ?? '',
+          fecha_vencimiento: origen.fecha_vencimiento ?? null,
         },
         select: {
           id_existencia: true,
           cantidad: true,
+          precio_compra_unitario: true,
         },
       });
 
       if (destinoExistencia) {
+        const cantidadDestinoActual = new Prisma.Decimal(
+          destinoExistencia.cantidad,
+        );
+
+        const costoDestinoActual =
+          destinoExistencia.precio_compra_unitario !== null &&
+            destinoExistencia.precio_compra_unitario !== undefined
+            ? new Prisma.Decimal(destinoExistencia.precio_compra_unitario)
+            : null;
+
+        let nuevoCostoDestino = costoDestinoActual;
+
+        if (costoTrasladado) {
+          if (costoDestinoActual && cantidadDestinoActual.gt(0)) {
+            nuevoCostoDestino = cantidadDestinoActual
+              .mul(costoDestinoActual)
+              .add(cantidadMover.mul(costoTrasladado))
+              .div(cantidadDestinoActual.add(cantidadMover));
+          } else {
+            nuevoCostoDestino = costoTrasladado;
+          }
+        }
+
         await tx.existencias.update({
           where: { id_existencia: destinoExistencia.id_existencia },
           data: {
-            cantidad: new Prisma.Decimal(destinoExistencia.cantidad).add(
-              cantidadMover,
-            ),
+            cantidad: cantidadDestinoActual.add(cantidadMover),
+            precio_compra_unitario: nuevoCostoDestino,
+            nota: origen.nota ?? undefined,
+            codigo_barras: origen.codigo_barras ?? undefined,
           },
         });
       } else {
@@ -440,6 +523,7 @@ export class TrasladosService {
             id_bodega: traslado.id_bodega_destino,
             nota: origen.nota ?? null,
             cantidad: cantidadMover,
+            precio_compra_unitario: costoTrasladado,
             fecha_vencimiento: origen.fecha_vencimiento,
             lote: origen.lote ?? '',
             codigo_barras: origen.codigo_barras ?? null,
@@ -467,6 +551,11 @@ export class TrasladosService {
 
       const codigo_traslado = await this.nextCodigoTraslado(tx, 'TR', 4);
 
+      const detalleConCosto = await this.getDetalleTrasladoConCosto(
+        tx,
+        dto.detalle,
+      );
+
       return tx.traslado.create({
         data: {
           id_bodega_origen: dto.id_bodega_origen,
@@ -479,9 +568,10 @@ export class TrasladosService {
           id_responsable: opts.idUsuario,
           codigo_traslado,
           detalle_traslado: {
-            create: dto.detalle.map((d) => ({
+            create: detalleConCosto.map((d) => ({
               id_existencia: d.id_existencia,
-              cantidad: new Prisma.Decimal(d.cantidad),
+              cantidad: d.cantidad,
+              precio_compra_unitario: d.precio_compra_unitario,
             })),
           },
         },
@@ -616,28 +706,6 @@ export class TrasladosService {
         );
       }
 
-      if (dto.detalle !== undefined) {
-        if (actual.id_estado_traslado !== this.ESTADO_BORRADOR) {
-          throw new BadRequestException(
-            'Solo puedes editar el detalle de un traslado en borrador',
-          );
-        }
-
-        await this.validarExistencias(tx, nuevoOrigen, dto.detalle);
-
-        await tx.detalle_traslado.deleteMany({
-          where: { id_traslado: id },
-        });
-
-        await tx.detalle_traslado.createMany({
-          data: dto.detalle.map((d) => ({
-            id_traslado: id,
-            id_existencia: d.id_existencia,
-            cantidad: new Prisma.Decimal(d.cantidad),
-          })),
-        });
-      }
-
       if (debeRecalcularReservas) {
         await this.liberarReservasExistencias(tx, detalleActualPlano);
 
@@ -647,6 +715,32 @@ export class TrasladosService {
         }
       } else if (debeLiberarPorAnulacion) {
         await this.liberarReservasExistencias(tx, detalleActualPlano);
+      }
+
+      if (dto.detalle !== undefined) {
+        if (actual.id_estado_traslado !== this.ESTADO_BORRADOR) {
+          throw new BadRequestException(
+            'Solo puedes editar el detalle de un traslado en borrador',
+          );
+        }
+
+        await tx.detalle_traslado.deleteMany({
+          where: { id_traslado: id },
+        });
+
+        const detalleConCosto = await this.getDetalleTrasladoConCosto(
+          tx,
+          dto.detalle,
+        );
+
+        await tx.detalle_traslado.createMany({
+          data: detalleConCosto.map((d) => ({
+            id_traslado: id,
+            id_existencia: d.id_existencia,
+            cantidad: d.cantidad,
+            precio_compra_unitario: d.precio_compra_unitario,
+          })),
+        });
       }
 
       const updated = await tx.traslado.update({
@@ -659,6 +753,30 @@ export class TrasladosService {
             : undefined,
           nota: dto.nota ?? undefined,
           id_estado_traslado: dto.id_estado_traslado ?? undefined,
+
+          ...(dto.id_estado_traslado === this.ESTADO_EN_TRANSITO &&
+            actual.id_estado_traslado !== this.ESTADO_EN_TRANSITO
+            ? {
+              fecha_envio: new Date(),
+              id_usuario_envio: opts.idUsuario,
+            }
+            : {}),
+
+          ...(dto.id_estado_traslado === this.ESTADO_RECIBIDO &&
+            actual.id_estado_traslado !== this.ESTADO_RECIBIDO
+            ? {
+              fecha_recepcion: new Date(),
+              id_usuario_recibio: opts.idUsuario,
+            }
+            : {}),
+
+          ...(dto.id_estado_traslado === this.ESTADO_ANULADO &&
+            actual.id_estado_traslado !== this.ESTADO_ANULADO
+            ? {
+              fecha_anulacion: new Date(),
+              id_usuario_anulo: opts.idUsuario,
+            }
+            : {}),
         },
         select: trasladoDetailSelect,
       });

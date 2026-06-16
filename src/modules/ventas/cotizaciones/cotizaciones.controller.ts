@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -16,10 +17,30 @@ import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { UpdateEstadoCotizacionDto } from './dto/update-estado-cotizacion.dto';
 import { UpdateCotizacionDto } from './dto/update-cotizacion.dto';
 
+type AuthRequest = {
+  user?: {
+    sub?: number | string;
+    id?: number | string;
+    id_usuario?: number | string;
+  };
+};
+
+const getAuthUserId = (req: AuthRequest) => {
+  const idUsuario = Number(
+    req.user?.sub ?? req.user?.id_usuario ?? req.user?.id,
+  );
+
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) {
+    throw new BadRequestException('Usuario autenticado inválido');
+  }
+
+  return idUsuario;
+};
+
 @UseGuards(AuthGuard('jwt'))
 @Controller('cotizaciones')
 export class CotizacionesController {
-  constructor(private readonly cotizacionesService: CotizacionesService) {}
+  constructor(private readonly cotizacionesService: CotizacionesService) { }
 
   @Post()
   create(@Body() dto: CreateCotizacionDto) {
@@ -41,6 +62,25 @@ export class CotizacionesController {
     return this.cotizacionesService.findAll({ idBodega });
   }
 
+  @Get('costo-referencia')
+  getCostoReferencia(
+    @Query('id_cliente') idClienteRaw: string,
+    @Query('id_producto') idProductoRaw: string,
+  ) {
+    const idCliente = Number(idClienteRaw);
+    const idProducto = Number(idProductoRaw);
+
+    if (!Number.isFinite(idCliente) || idCliente <= 0) {
+      throw new BadRequestException('id_cliente inválido');
+    }
+
+    if (!Number.isFinite(idProducto) || idProducto <= 0) {
+      throw new BadRequestException('id_producto inválido');
+    }
+
+    return this.cotizacionesService.getCostoReferencia(idCliente, idProducto);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.cotizacionesService.findOne(id);
@@ -58,7 +98,8 @@ export class CotizacionesController {
   updateEstado(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEstadoCotizacionDto,
+    @Req() req: AuthRequest,
   ) {
-    return this.cotizacionesService.updateEstado(id, dto);
+    return this.cotizacionesService.updateEstado(id, dto, getAuthUserId(req));
   }
 }

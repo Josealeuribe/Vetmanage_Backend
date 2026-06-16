@@ -24,12 +24,12 @@ export type UsuarioPayload = Prisma.usuarioGetPayload<{
 export type UsuariosFindAllResponse =
   | UsuarioPayload[]
   | {
-      page: number;
-      limit: number;
-      total: number;
-      pages: number;
-      data: UsuarioPayload[];
-    };
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    data: UsuarioPayload[];
+  };
 
 type PrismaKnownError = { code: string; meta?: unknown };
 
@@ -47,6 +47,149 @@ export class UsuarioService {
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
   ) { }
+
+  private normalizarTexto(value: string) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\./g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private calcularEdad(fechaNacimiento: Date) {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const nacimiento = new Date(
+      fechaNacimiento.getFullYear(),
+      fechaNacimiento.getMonth(),
+      fechaNacimiento.getDate(),
+    );
+
+    nacimiento.setHours(0, 0, 0, 0);
+
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+
+    const noHaCumplidoEsteAnio =
+      hoy.getMonth() < nacimiento.getMonth() ||
+      (hoy.getMonth() === nacimiento.getMonth() &&
+        hoy.getDate() < nacimiento.getDate());
+
+    if (noHaCumplidoEsteAnio) edad--;
+
+    return edad;
+  }
+
+  private parseFechaNacimiento(value: string | Date | null | undefined) {
+    if (!value) {
+      throw new BadRequestException('La fecha de nacimiento es requerida');
+    }
+
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) {
+        throw new BadRequestException('La fecha de nacimiento no es válida');
+      }
+
+      return value;
+    }
+
+    const fechaTexto = String(value).trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaTexto)) {
+      throw new BadRequestException(
+        'La fecha de nacimiento debe tener un formato válido',
+      );
+    }
+
+    const [year, month, day] = fechaTexto.split('-').map(Number);
+
+    const fecha = new Date(year, month - 1, day);
+    fecha.setHours(0, 0, 0, 0);
+
+    if (
+      fecha.getFullYear() !== year ||
+      fecha.getMonth() !== month - 1 ||
+      fecha.getDate() !== day
+    ) {
+      throw new BadRequestException('La fecha de nacimiento no es válida');
+    }
+
+    return fecha;
+  }
+
+  private async validarTipoDocumentoYFechaNacimiento(
+    idTipoDoc: number,
+    fechaNacimientoValue: string | Date | null | undefined,
+  ) {
+    const tipoDocumento = await this.prisma.tipo_documento.findUnique({
+      where: { id_tipo_doc: idTipoDoc },
+      select: {
+        id_tipo_doc: true,
+        nombre_doc: true,
+      },
+    });
+
+    if (!tipoDocumento) {
+      throw new BadRequestException('Tipo de documento inválido');
+    }
+
+    const tipoNormalizado = this.normalizarTexto(tipoDocumento.nombre_doc);
+
+    if (tipoNormalizado === 'nit' || tipoNormalizado.includes('nit')) {
+      throw new BadRequestException('No se permite registrar usuarios con NIT');
+    }
+
+    const fechaNacimiento = this.parseFechaNacimiento(fechaNacimientoValue);
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    if (fechaNacimiento > hoy) {
+      throw new BadRequestException(
+        'La fecha de nacimiento no puede ser futura',
+      );
+    }
+
+    const edad = this.calcularEdad(fechaNacimiento);
+
+    if (edad > 120) {
+      throw new BadRequestException(
+        'La fecha de nacimiento no puede superar los 120 años',
+      );
+    }
+
+    if (edad < 16) {
+      throw new BadRequestException(
+        'No se pueden registrar usuarios menores de 16 años',
+      );
+    }
+
+    const esTarjetaIdentidad =
+      tipoNormalizado === 'ti' ||
+      tipoNormalizado.includes('tarjeta de identidad');
+
+    const esDocumentoMayorEdad =
+      tipoNormalizado === 'cc' ||
+      tipoNormalizado === 'ce' ||
+      tipoNormalizado === 'pasaporte' ||
+      tipoNormalizado.includes('cedula de ciudadania') ||
+      tipoNormalizado.includes('cedula extranjeria');
+
+    if (esTarjetaIdentidad && edad >= 18) {
+      throw new BadRequestException(
+        'Para Tarjeta de Identidad, el usuario debe tener entre 16 y 17 años',
+      );
+    }
+
+    if (esDocumentoMayorEdad && edad < 18) {
+      throw new BadRequestException(
+        'Para este tipo de documento, el usuario debe ser mayor de edad',
+      );
+    }
+
+    return fechaNacimiento;
+  }
 
   async findAll(
     query: ListUsuarioQueryDto = {},
@@ -107,9 +250,10 @@ export class UsuarioService {
     const claveTemporal = generarClaveTemporal();
     const passwordHash = await bcrypt.hash(claveTemporal, 10);
 
-    const fechaNacimiento = dto.fecha_nacimiento
-      ? new Date(dto.fecha_nacimiento)
-      : null;
+    const fechaNacimiento = await this.validarTipoDocumentoYFechaNacimiento(
+      dto.id_tipo_doc,
+      dto.fecha_nacimiento,
+    );
 
     const tokenPlano = generarTokenPlano();
     const tokenHash = hashToken(tokenPlano);
@@ -173,10 +317,27 @@ export class UsuarioService {
   async update(id: number, dto: ActualizarUsuarioDto) {
     const exists = await this.prisma.usuario.findUnique({
       where: { id_usuario: id },
-      select: { id_usuario: true },
+      select: {
+        id_usuario: true,
+        id_tipo_doc: true,
+        fecha_nacimiento: true,
+      },
     });
 
     if (!exists) throw new NotFoundException('Usuario no encontrado');
+
+    const idTipoDocFinal = dto.id_tipo_doc ?? exists.id_tipo_doc;
+
+    const fechaNacimientoFinal =
+      dto.fecha_nacimiento !== undefined
+        ? dto.fecha_nacimiento
+        : exists.fecha_nacimiento;
+
+    const fechaNacimientoValidada =
+      await this.validarTipoDocumentoYFechaNacimiento(
+        idTipoDocFinal,
+        fechaNacimientoFinal,
+      );
 
     const data: Prisma.usuarioUncheckedUpdateInput = {};
 
@@ -221,9 +382,7 @@ export class UsuarioService {
     }
 
     if (dto.fecha_nacimiento !== undefined) {
-      data.fecha_nacimiento = dto.fecha_nacimiento
-        ? new Date(dto.fecha_nacimiento)
-        : null;
+      data.fecha_nacimiento = fechaNacimientoValidada;
     }
 
     return this.prisma.usuario.update({

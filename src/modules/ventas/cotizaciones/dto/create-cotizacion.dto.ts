@@ -25,10 +25,6 @@ export class CreateCotizacionDto {
 
   @IsInt()
   @Min(1)
-  id_bodega: number;
-
-  @IsInt()
-  @Min(1)
   id_usuario_creador: number;
 
   @IsInt()

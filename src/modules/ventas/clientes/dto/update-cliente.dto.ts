@@ -57,4 +57,9 @@ export class UpdateClienteDto {
   @IsOptional()
   @IsBoolean()
   estado?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  id_bodega?: number;
 }

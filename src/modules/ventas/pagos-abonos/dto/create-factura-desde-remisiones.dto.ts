@@ -23,7 +23,6 @@ export class CreateFacturaDesdeRemisionesDto {
   @IsDateString()
   fecha_factura: string;
 
-  @IsOptional()
   @IsDateString()
   fecha_vencimiento?: string;
 

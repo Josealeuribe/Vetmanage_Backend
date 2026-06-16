@@ -291,6 +291,21 @@ export class RemisionesCompraService {
     }
   }
 
+  private calcularPrecioConIva(precioUnitario: Prisma.Decimal, porcentajeIva: Prisma.Decimal | number | null | undefined) {
+    const precio = Number(precioUnitario);
+    const iva = Number(porcentajeIva ?? 0);
+
+    if (!Number.isFinite(precio) || precio < 0) {
+      throw new BadRequestException('El precio unitario de compra es inválido');
+    }
+
+    if (!Number.isFinite(iva) || iva < 0) {
+      throw new BadRequestException('El IVA del producto es inválido');
+    }
+
+    return precio * (1 + iva / 100);
+  }
+
   private async getCompraContextoBase(
     tx: Prisma.TransactionClient,
     idCompra: number,
@@ -810,6 +825,8 @@ export class RemisionesCompraService {
       detalle_remision_compra: Array<{
         id_producto: number;
         cantidad: Prisma.Decimal;
+        precio_unitario: Prisma.Decimal;
+        iva_porcentaje: Prisma.Decimal | number | null;
         lote: string;
         fecha_vencimiento: Date | null;
         nota: string | null;
@@ -827,16 +844,44 @@ export class RemisionesCompraService {
         },
       });
 
+      const cantidadEntrante = Number(item.cantidad);
+
+      if (!Number.isFinite(cantidadEntrante) || cantidadEntrante <= 0) {
+        throw new BadRequestException(
+          `La cantidad del producto ${item.id_producto} es inválida`,
+        );
+      }
+
+      const costoEntrante = this.calcularPrecioConIva(
+        item.precio_unitario,
+        item.iva_porcentaje,
+      );
+
       if (existencia) {
+        const cantidadActual = Number(existencia.cantidad);
+        const costoActual =
+          existencia.precio_compra_unitario !== null &&
+            existencia.precio_compra_unitario !== undefined
+            ? Number(existencia.precio_compra_unitario)
+            : null;
+
+        const nuevaCantidad = cantidadActual + cantidadEntrante;
+
+        const nuevoCosto =
+          costoActual !== null && Number.isFinite(costoActual) && cantidadActual > 0
+            ? (cantidadActual * costoActual + cantidadEntrante * costoEntrante) /
+            nuevaCantidad
+            : costoEntrante;
+
         await tx.existencias.update({
           where: { id_existencia: existencia.id_existencia },
           data: {
             cantidad: {
               increment: item.cantidad,
             },
+            precio_compra_unitario: new Prisma.Decimal(nuevoCosto.toFixed(2)),
             nota: item.nota ?? existencia.nota,
-            codigo_barras:
-              item.codigo_barras ?? existencia.codigo_barras ?? null,
+            codigo_barras: item.codigo_barras ?? existencia.codigo_barras ?? null,
           },
         });
       } else {
@@ -845,6 +890,7 @@ export class RemisionesCompraService {
             id_producto: item.id_producto,
             id_bodega: remision.id_bodega,
             cantidad: item.cantidad,
+            precio_compra_unitario: new Prisma.Decimal(costoEntrante.toFixed(2)),
             lote: item.lote ?? '',
             fecha_vencimiento: item.fecha_vencimiento ?? null,
             nota: item.nota ?? null,
@@ -1227,13 +1273,14 @@ export class RemisionesCompraService {
           detalle_remision_compra: actual.detalle_remision_compra.map((d) => ({
             id_producto: d.id_producto,
             cantidad: new Prisma.Decimal(d.cantidad),
+            precio_unitario: new Prisma.Decimal(d.precio_unitario),
+            iva_porcentaje: d.iva?.porcentaje ?? 0,
             lote: d.lote ?? '',
             fecha_vencimiento: d.fecha_vencimiento,
             nota: d.nota,
             codigo_barras: d.codigo_barras ?? null,
           })),
         });
-
         return tx.remision_compra.update({
           where: { id_remision_compra: id },
           data: {

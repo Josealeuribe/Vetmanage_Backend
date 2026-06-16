@@ -161,6 +161,10 @@ export class ExistenciasService {
           id_bodega: opts.idBodegaActiva,
           nota: dto.nota ?? null,
           cantidad: new Prisma.Decimal(dto.cantidad ?? 0),
+          precio_compra_unitario:
+            dto.precio_compra_unitario !== undefined
+              ? new Prisma.Decimal(dto.precio_compra_unitario)
+              : null,
           fecha_vencimiento: fechaVencimiento,
           lote,
         },
@@ -196,12 +200,18 @@ export class ExistenciasService {
       const cantidad = Number(existencia.cantidad);
       const cantidadReservada = Number(existencia.cantidad_reservada ?? 0);
       const cantidadDisponible = Math.max(0, cantidad - cantidadReservada);
+      const precioCompraUnitario =
+        existencia.precio_compra_unitario !== null &&
+          existencia.precio_compra_unitario !== undefined
+          ? Number(existencia.precio_compra_unitario)
+          : null;
 
       return {
         ...existencia,
         cantidad: cantidad,
         cantidad_reservada: cantidadReservada,
         cantidad_disponible: cantidadDisponible,
+        precio_compra_unitario: precioCompraUnitario,
       };
     });
   }
@@ -274,6 +284,13 @@ export class ExistenciasService {
             dto.cantidad !== undefined
               ? new Prisma.Decimal(dto.cantidad)
               : undefined,
+          ...(dto.precio_compra_unitario !== undefined
+            ? {
+              precio_compra_unitario: new Prisma.Decimal(
+                dto.precio_compra_unitario,
+              ),
+            }
+            : {}),
           fecha_vencimiento:
             dto.fecha_vencimiento !== undefined
               ? dto.fecha_vencimiento
@@ -354,18 +371,31 @@ export class ExistenciasService {
 
     return Promise.all(
       productos.map(async (producto) => {
-        const lotes = producto.existencias.map((existencia) => ({
-          id_existencia: existencia.id_existencia,
-          lote: existencia.lote,
-          cantidad: Number(existencia.cantidad),
-          fecha_vencimiento: existencia.fecha_vencimiento,
-          id_bodega: existencia.id_bodega,
-          nombre_bodega: existencia.bodega?.nombre_bodega ?? '',
-          nota: existencia.nota ?? '',
-        }));
+        const lotes = producto.existencias.map((existencia) => {
+          const cantidad = Number(existencia.cantidad ?? 0);
+          const cantidadReservada = Number(existencia.cantidad_reservada ?? 0);
+          const cantidadDisponible = Math.max(cantidad - cantidadReservada, 0);
+
+          return {
+            id_existencia: existencia.id_existencia,
+            lote: existencia.lote,
+            cantidad,
+            cantidad_reservada: cantidadReservada,
+            cantidad_disponible: cantidadDisponible,
+            precio_compra_unitario:
+              existencia.precio_compra_unitario !== null &&
+                existencia.precio_compra_unitario !== undefined
+                ? Number(existencia.precio_compra_unitario)
+                : null,
+            fecha_vencimiento: existencia.fecha_vencimiento,
+            id_bodega: existencia.id_bodega,
+            nombre_bodega: existencia.bodega?.nombre_bodega ?? "",
+            nota: existencia.nota,
+          };
+        });
 
         const stock_total = lotes.reduce(
-          (sum, lote) => sum + Number(lote.cantidad),
+          (acc, lote) => acc + Number(lote.cantidad_disponible ?? 0),
           0,
         );
 
