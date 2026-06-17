@@ -33,7 +33,9 @@ export class MailService {
     this.from = `"${fromName}" <${user}>`;
 
     this.transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: this.config.get<string>('MAIL_HOST') || 'smtp.gmail.com',
+      port: Number(this.config.get<string>('MAIL_PORT') || 465),
+      secure: this.config.get<string>('MAIL_SECURE') !== 'false',
       auth: {
         user,
         pass,
