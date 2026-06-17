@@ -68,6 +68,27 @@ const rolSelect = {
 export class RolesService {
   constructor(private readonly prisma: PrismaService) { }
 
+  private esRolAdministrador(rol: {
+    id_rol: number;
+    nombre_rol: string;
+  }): boolean {
+    return (
+      rol.id_rol === 1 ||
+      rol.nombre_rol.trim().toLowerCase() === 'administrador'
+    );
+  }
+
+  private validarRolProtegido(rol: {
+    id_rol: number;
+    nombre_rol: string;
+  }) {
+    if (this.esRolAdministrador(rol)) {
+      throw new BadRequestException(
+        'El rol Administrador es un rol protegido del sistema y no se puede modificar',
+      );
+    }
+  }
+
   private async validarPermisos(idsPermisos: number[]) {
     if (!idsPermisos?.length) return;
 
@@ -146,7 +167,8 @@ export class RolesService {
   }
 
   async asignarPermisos(id_rol: number, idsPermisos: number[]) {
-    await this.findOne(id_rol);
+    const rol = await this.findOne(id_rol);
+    this.validarRolProtegido(rol);
 
     const idsUnicos = [...new Set(idsPermisos)];
     await this.validarPermisos(idsUnicos);
@@ -174,7 +196,8 @@ export class RolesService {
   }
 
   async update(id_rol: number, dto: UpdateRolDto) {
-    await this.findOne(id_rol);
+    const rol = await this.findOne(id_rol);
+    this.validarRolProtegido(rol);
 
     const idsPermisos =
       dto.ids_permisos !== undefined
@@ -249,7 +272,8 @@ export class RolesService {
   }
 
   async remove(id_rol: number): Promise<roles> {
-    await this.findOne(id_rol);
+    const rol = await this.findOne(id_rol);
+    this.validarRolProtegido(rol);
 
     const totalUsuarios = await this.prisma.usuario.count({
       where: { id_rol },
