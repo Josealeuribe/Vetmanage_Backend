@@ -34,8 +34,13 @@ export class MailService {
 
     this.transporter = nodemailer.createTransport({
       host: this.config.get<string>('MAIL_HOST') || 'smtp.gmail.com',
-      port: Number(this.config.get<string>('MAIL_PORT') || 465),
-      secure: this.config.get<string>('MAIL_SECURE') !== 'false',
+      port: Number(this.config.get<string>('MAIL_PORT') || 587),
+      secure: false,
+      requireTLS: true,
+      family: 4,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
       auth: {
         user,
         pass,
