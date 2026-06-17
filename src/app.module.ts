@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 import { ExistenciasModule } from './modules/existencias/existencias.module';
 import { PaisesModule } from './modules/existencias/bodegas/paises/paises.module';
 import { DepartamentosModule } from './modules/existencias/bodegas/departamentos/departamentos.module';
@@ -26,6 +27,7 @@ import { NotificacionesModule } from './modules/notificaciones/notificaciones.mo
     PrismaModule,
     PermisosModule,
     AuthModule,
+    CloudinaryModule,
     ExistenciasModule,
     PaisesModule,
     DepartamentosModule,

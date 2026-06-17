@@ -33,6 +33,7 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
+    "cloudinary": "^2.10.0",
     "common": "^0.2.5",
     "dotenv": "^17.3.1",
     "mariadb": "^3.5.1",

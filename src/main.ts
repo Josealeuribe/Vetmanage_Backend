@@ -9,8 +9,6 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
-
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new AllExceptionsFilter());
 
