@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 type CrearContrasenaMailParams = {
   to: string;
@@ -18,40 +18,25 @@ type RestablecerContrasenaMailParams = {
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private readonly transporter: nodemailer.Transporter;
+  private readonly resend: Resend;
   private readonly from: string;
 
   constructor(private readonly config: ConfigService) {
-    const user = this.config.get<string>('MAIL_USER');
-    const pass = this.config.get<string>('MAIL_PASS');
-    const fromName = this.config.get<string>('MAIL_FROM_NAME') || 'VetManage';
+    const apiKey = this.config.get<string>('RESEND_API_KEY');
+    const from = this.config.get<string>('MAIL_FROM') || 'VetManage <onboarding@resend.dev>';
 
-    if (!user || !pass) {
-      throw new Error('MAIL_USER y MAIL_PASS son obligatorios en el .env');
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY es obligatorio en el .env');
     }
 
-    this.from = `"${fromName}" <${user}>`;
-
-    this.transporter = nodemailer.createTransport({
-      host: this.config.get<string>('MAIL_HOST') || 'smtp.gmail.com',
-      port: Number(this.config.get<string>('MAIL_PORT') || 587),
-      secure: false,
-      requireTLS: true,
-      family: 4,
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    this.resend = new Resend(apiKey);
+    this.from = from;
   }
 
   async enviarCreacionContrasena(params: CrearContrasenaMailParams) {
     const { to, nombre, enlace } = params;
 
-    await this.transporter.sendMail({
+    const { error } = await this.resend.emails.send({
       from: this.from,
       to,
       subject: 'Activa tu cuenta en VetManage',
@@ -61,7 +46,6 @@ export class MailService {
             <tr>
               <td align="center">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px; background:#ffffff; border-radius:20px; overflow:hidden; border:1px solid #e5e7eb;">
-                  
                   <tr>
                     <td style="background:linear-gradient(135deg, #0b1020 0%, #14213d 100%); padding:32px 28px; text-align:center;">
                       <div style="font-family:Arial, sans-serif; color:#ffffff; font-size:28px; font-weight:800; letter-spacing:0.5px;">
@@ -128,7 +112,6 @@ export class MailService {
                       </p>
                     </td>
                   </tr>
-
                 </table>
               </td>
             </tr>
@@ -136,6 +119,11 @@ export class MailService {
         </div>
       `,
     });
+
+    if (error) {
+      this.logger.error('Error enviando correo de creación de contraseña', error);
+      throw new Error(error.message);
+    }
 
     this.logger.log(`Correo de creación de contraseña enviado a ${to}`);
   }
@@ -145,7 +133,7 @@ export class MailService {
   ) {
     const { to, nombre, enlaceWeb, enlaceApp } = params;
 
-    await this.transporter.sendMail({
+    const { error } = await this.resend.emails.send({
       from: this.from,
       to,
       subject: 'Restablece tu contraseña en VetManage',
@@ -155,7 +143,6 @@ export class MailService {
             <tr>
               <td align="center">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px; background:#ffffff; border-radius:20px; overflow:hidden; border:1px solid #e5e7eb;">
-                  
                   <tr>
                     <td style="background:linear-gradient(135deg, #0b1020 0%, #14213d 100%); padding:32px 28px; text-align:center;">
                       <div style="font-family:Arial, sans-serif; color:#ffffff; font-size:28px; font-weight:800; letter-spacing:0.5px;">
@@ -251,7 +238,6 @@ export class MailService {
                       </p>
                     </td>
                   </tr>
-
                 </table>
               </td>
             </tr>
@@ -259,6 +245,11 @@ export class MailService {
         </div>
       `,
     });
+
+    if (error) {
+      this.logger.error('Error enviando correo de restablecimiento', error);
+      throw new Error(error.message);
+    }
 
     this.logger.log(`Correo de restablecimiento enviado a ${to}`);
   }
