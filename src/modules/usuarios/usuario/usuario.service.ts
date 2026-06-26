@@ -292,6 +292,12 @@ export class UsuarioService {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const enlace = `${frontendUrl}/restablecer-contrasena?token=${tokenPlano}`;
 
+    console.log('==========================================');
+    console.log('LINK DE CREACIÓN DE CONTRASEÑA');
+    console.log(`Usuario: ${dto.email}`);
+    console.log(enlace);
+    console.log('==========================================');
+
     setImmediate(async () => {
       try {
         await this.mailService.enviarCreacionContrasena({
