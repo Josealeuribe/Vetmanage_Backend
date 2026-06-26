@@ -55,6 +55,13 @@ export class RestablecerContrasenaService {
     const enlaceWeb = `${frontendUrl}/restablecer-contrasena?token=${encodeURIComponent(tokenPlano)}`;
     const enlaceApp = `${frontendMobile}restablecer-contrasena?token=${encodeURIComponent(tokenPlano)}`;
 
+    console.log('==========================================');
+    console.log('LINK DE RESTABLECIMIENTO DE CONTRASEÑA');
+    console.log(`Usuario: ${usuario.email}`);
+    console.log(`Web: ${enlaceWeb}`);
+    console.log(`App: ${enlaceApp}`);
+    console.log('==========================================');
+
     setImmediate(async () => {
       try {
         await this.mailService.enviarRestablecimientoContrasena({
